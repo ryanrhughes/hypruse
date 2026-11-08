@@ -881,6 +881,7 @@ server; for agents that run commands). Observation, works in read-only mode:
   marks [--window ADDR] [--name TEXT] [--out PATH]
   binds
   wait_for EVENT [--match TEXT] [--timeout S]
+  target [NAME]                  here or a desk; HYPRUSE_TARGET=NAME drives a desk
 Acting (refused with exit 3 under HYPRUSE_READONLY; all take --dry-run, which
 rehearses; all but launch and clipboard take --then none|desktop|ui|screenshot,
 which appends the effect; pointer, keyboard and click_ui take --allow-auth):

@@ -33,7 +33,7 @@ from typing import Any
 
 from hypruse import __version__
 
-OBSERVE = ("desktop", "screenshot", "zoom", "ui", "marks", "binds", "wait_for")
+OBSERVE = ("desktop", "screenshot", "zoom", "ui", "marks", "binds", "wait_for", "target")
 ACT = ("pointer", "keyboard", "click_ui", "hypr", "launch", "use_bind", "sequence")
 OWNER = ("doctor", "init", "stop", "journal", "replay", "skill")
 ALIASES = {"click-ui": "click_ui", "use-bind": "use_bind", "wait-for": "wait_for"}
@@ -131,6 +131,10 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--out", default=_S, metavar="PATH", help="move the capture to PATH")
 
     verb("binds", "the owner's keybinds, decoded")
+
+    v = verb("target", "which desktop the verbs drive: here, or a desk")
+    v.add_argument("name", nargs="?", default=_S,
+                   help="check that this desk is running (pass HYPRUSE_TARGET=NAME to drive it)")
 
     v = verb("wait_for", "block on a compositor event instead of sleeping", ("wait-for",))
     v.add_argument("event", choices=WAIT_EVENTS)
@@ -584,6 +588,8 @@ def _render_text_block(text: str) -> str:
 def _render_dict(tool: str, d: dict[str, Any]) -> str:
     if "monitors" in d:
         return _render_desktop(d)
+    if tool == "target" and "target" in d:
+        return _render_target(d)
     if tool == "wait_for" and "event" in d:
         # `openwindow address=0x.. class=firefox title="Inbox"`, with an
         # `already: ` prefix when the condition held before the wait began
@@ -647,6 +653,26 @@ def _render_ui(items: list[dict[str, Any]], key: str = "") -> str:
         if e.get("clickable") is False:
             line += " not-clickable"
         lines.append(line)
+    return "\n".join(lines)
+
+
+def _render_target(d: dict[str, Any]) -> str:
+    """`target here wayland-1: the human's own desktop...`, then a line per
+    desk. A verb is one process, so naming a desk checks it and says how to
+    drive it rather than switching anything for the next command."""
+    head = f"target {_safe(d['target'])} {_safe(d.get('display', ''))}"
+    lines = [f"{head}: {_safe(d.get('what', ''))}"]
+    for desk in d.get("desks") or []:
+        state = "running" if desk.get("running") else "stopped"
+        lines.append(
+            f"desk {_safe(desk.get('name'))} {state} {_safe(desk.get('profile') or '-')} "
+            f"{_safe(desk.get('display') or '-')}".rstrip()
+        )
+    if d["target"] != "here" and os.environ.get("HYPRUSE_TARGET", "").strip() != d["target"]:
+        lines.append(
+            f"note each command is its own process: run them as "
+            f"HYPRUSE_TARGET={_safe(d['target'])} hypruse VERB ... to drive this desk"
+        )
     return "\n".join(lines)
 
 

@@ -110,6 +110,23 @@ background: their cursor, keyboard focus and workspace stay where they are.
   human's screen before `launch` moves it; the note says so. Never
   `launch` a command that drives the desktop itself (hyprctl, wtype).
 
+## Desks: a desktop of your own
+
+A desk is a nested Hyprland with its own cursor and focus, started by the
+owner with `hypruse-desk start NAME` (often the full Omarchy desktop). Work
+there never touches the human's cursor or windows. `hypruse target` lists
+the desks; each command is its own process, so drive one by prefixing every
+call: `HYPRUSE_TARGET=NAME hypruse desktop`. A desk that isn't running is
+an error, never a quiet fallback to the human's screen.
+
+- In a desk the whole screen is yours: background mode is off, so act in
+  the foreground and launch where you can see it.
+- Audio, network, Bluetooth and power are still the real machine. Don't
+  suspend, reboot or log out from a desk's menus; they're refused anyway.
+- Use one when the user asks you to test something interactively, or for
+  long work they didn't ask to watch. Use their own desktop (no
+  HYPRUSE_TARGET) when they asked you to act on their windows.
+
 ## Coordinates
 
 One space everywhere: Hyprland global logical pixels, the space window `at`,

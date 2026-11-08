@@ -733,3 +733,24 @@ def test_the_launch_warning_is_printed():
     out = verbs.render("launch", {"address": "0x1", "class": "foot", "title": "~",
                                   "workspace": 99, "note": "n", "warning": "careful"})
     assert out.splitlines()[-1] == "warning careful"
+
+
+def test_target_lists_desks_and_says_how_to_drive_one(stub, capsys, monkeypatch):
+    monkeypatch.delenv("HYPRUSE_TARGET", raising=False)
+    desks = [{"name": "omarchy1", "running": True, "profile": "omarchy", "display": "wayland-2"},
+             {"name": "old", "running": False, "profile": "", "display": ""}]
+    calls = stub("target", {"target": "omarchy1", "display": "wayland-2",
+                            "what": "a desk", "desks": desks})
+    assert verbs.main(["target", "omarchy1"]) == 0
+    assert calls == [("target", {"name": "omarchy1"})]
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "target omarchy1 wayland-2: a desk"
+    assert out[1] == "desk omarchy1 running omarchy wayland-2"
+    assert out[2] == "desk old stopped - -"
+    # one process can't switch the next one: the note says how to
+    assert out[3].startswith("note ") and "HYPRUSE_TARGET=omarchy1 hypruse VERB" in out[3]
+
+    monkeypatch.setenv("HYPRUSE_TARGET", "omarchy1")
+    monkeypatch.setattr("hypruse.target.from_env", lambda: None)
+    assert verbs.main(["target"]) == 0
+    assert not any(line.startswith("note ") for line in capsys.readouterr().out.splitlines())
