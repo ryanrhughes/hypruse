@@ -78,6 +78,16 @@ Upstream's instructions say synthetic keys can't trigger compositor binds. On Hy
 
 Under the Lua config manager a bind's action is a closure (`hyprctl binds` shows `HL.Dispatcher(exec_cmd) 342`), and hypruse has no way to invoke it from outside, so `use_bind SUPER+K` errors. Nearly every Omarchy bind is like that. Real key events are the way to fire them.
 
+### Omarchy renumbered the agent's workspaces into the user's (fixed by default)
+
+Omarchy gives every monitor a block of ten numbered workspaces (laptop 1-10, next monitor 11-20, and so on; `default/hypr/monitor-workspaces.lua`). On every reconcile (a monitor plugged or unplugged, a config reload, startup), a workspace with windows outside any monitor's block gets renumbered into the block of the monitor it sits on. hypruse's upstream default puts the agent's apps on 99 down to 90, which is block 9, a tenth monitor nobody has.
+
+Tested in a desk with background mode on: `launch foot` opened on 99, then `hyprctl reload` in the desk moved it to 42, that monitor's slot 2, and the bar lit up workspace "2". On a laptop that docks and undocks, that happens to the user's real session every time.
+
+Named workspaces have no number. Omarchy's reconcile only touches `id > 0` (`regular()`), and the bar skips `id <= 0`, so `name:agent` survived the reload and never showed in the bar. The fork's default is now `name:agent-1` to `name:agent-10`. Hyprland 0.57 reports a named workspace's `id` as `null` in `hyprctl -j workspaces`.
+
+Background typing into the hidden agent terminal (`keyboard type ... --window ADDR`, delivered with `sendshortcut`) worked. A `--window` capture of it showed an empty terminal with no prompt, because foot stops drawing while hidden, so the capture was its last frame from before. Bringing the workspace forward showed the typed text. A hidden capture isn't proof that an action landed; in a desk, look at the window in the foreground instead.
+
 ### Driving Omarchy's shell
 
 - Menus and bar panels are full-screen overlay layers that take the keyboard grab: `omarchy-menu`, `omarchy-image-selector` (the theme carousel), and `omarchy-keyboard-panel` (the Audio panel and friends). hypruse's note that a launcher layer "covers this point" or "holds the keyboard grab" is accurate while one is open.
@@ -108,7 +118,7 @@ The desk loads Omarchy's Hyprland config from a scratch home and starts only the
 | Anything run as root | A desk's theme switch rewrote `/etc/brave/policies/managed/color.json` and `/etc/chromium/...` through `omarchy-theme-set-browser-policy`'s passwordless sudo rule, so the user's real browser turned Vantablack black | PATH guards refuse `sudo`, `pkexec`, `run0`, `su`, `doas` |
 | Herdr theme sync | `omarchy-theme-set-herdr-machines` pushes the theme to the user's other machines over ssh when the `herdr-theme-sync` toggle is on | Seeding drops that toggle from the scratch state |
 
-The scratch home is seeded with `~/.config/omarchy`, `~/.config/hypr`, terminal and GTK configs, the bash dotfiles, and `~/.local/state/omarchy` minus `clipboard-history.json` and `clipboard-images` (211 MB of your clipboard; private and not needed). `~/.local/share/fonts` is symlinked.
+The scratch home is seeded with `~/.config/omarchy`, `~/.config/hypr`, terminal and GTK configs, the bash dotfiles, and `~/.local/state/omarchy` minus `clipboard-history.json` and `clipboard-images` (211 MB of your clipboard; private and not needed). `~/.local/share/fonts` is symlinked. mise's state dir is copied too: its trust list lives there, and without it every shell in the desk warned that `~/.config/mise/config.toml` wasn't trusted.
 
 The PATH guards sit at `$XDG_RUNTIME_DIR/hypruse/desks/<name>/bin`, first on the desk's `PATH`. Omarchy's bash bootstrap only puts mise's command-wrappers directory ahead of them, so they also hold in the `bash -lc` shells the Omarchy shell spawns (checked with `command -v` from a login shell launched in the desk). The guards were tested against fake `systemctl`/`loginctl`/`uwsm`/`1password` binaries, never the real ones.
 
