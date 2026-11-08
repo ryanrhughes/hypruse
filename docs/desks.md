@@ -21,6 +21,10 @@ hypruse itself can switch without `run`:
 - The MCP `target` tool: `target()` lists desks, `target("omarchy1")` points every tool at that desk, `target("here")` goes back to the user's desktop. `desktop` carries a `target` key while a desk is the target.
 - `HYPRUSE_TARGET=omarchy1` picks the target at startup, for the MCP server and the CLI verbs alike. A desk that isn't running is an error; it never falls back to `here`.
 
+- The CLI verb `hypruse target` lists here and the desks; `hypruse target NAME` checks a desk is running. A verb is one process and can't switch the next one, so shell agents prefix each command with `HYPRUSE_TARGET=NAME` (the bundled skill says so).
+
+On Ryan's machine the fork is registered as the `hypruse` MCP server for Claude Code (user scope, `~/.claude.json`) and Codex (`~/.codex/config.toml`), both pointing at `~/Work/hypruse/.venv/bin/hypruse`. `uv sync` installs the fork there in editable mode, so the server always runs the working tree, and an absolute path doesn't depend on the client seeing mise's `PATH`. Codex starts stdio servers with a stripped environment; a client with only `HOME`, `PATH` and `USER` still found the right monitors and switched to a desk and back, because of the discovery fix below. Omarchy keeps a separate Claude/Codex home per agent account (`omarchy-agent-account-home`); this registration is the default account only.
+
 `src/hypruse/target.py` reads the desk's env file, takes only the four variables above from it (so a desk can't switch off a guard like `HYPRUSE_AUTH_GUARD`), and drops what was cached against the old compositor: the virtual pointer and keyboard, the config-manager probe, the strict-mode seat baseline. Launched windows are kept per target, since window addresses only mean something on the compositor that issued them.
 
 State lives in two places:
