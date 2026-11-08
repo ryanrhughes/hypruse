@@ -16,6 +16,13 @@ contrib/hypruse-desk stop omarchy1 [--purge]        # --purge also deletes its s
 
 `run` sets `HYPRLAND_INSTANCE_SIGNATURE`, `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` and `HYPRUSE_BACKGROUND=0` for the command. Apps the agent launches go through the desk's compositor, so they get the desk's `HOME` and bus from it.
 
+hypruse itself can switch without `run`:
+
+- The MCP `target` tool: `target()` lists desks, `target("omarchy1")` points every tool at that desk, `target("here")` goes back to the user's desktop. `desktop` carries a `target` key while a desk is the target.
+- `HYPRUSE_TARGET=omarchy1` picks the target at startup, for the MCP server and the CLI verbs alike. A desk that isn't running is an error; it never falls back to `here`.
+
+`src/hypruse/target.py` reads the desk's env file, takes only the four variables above from it (so a desk can't switch off a guard like `HYPRUSE_AUTH_GUARD`), and drops what was cached against the old compositor: the virtual pointer and keyboard, the config-manager probe, the strict-mode seat baseline. Launched windows are kept per target, since window addresses only mean something on the compositor that issued them.
+
 State lives in two places:
 
 - `$XDG_RUNTIME_DIR/hypruse/desks/<name>/`: env, pids, the generated `hyprland.lua`, the private bus socket, the PATH guards, and the compositor's stdout log.
@@ -53,6 +60,30 @@ Related: `keyboard type` with no focused window reported "typed 57 characters" a
 
 The doctor's screenshot check captures region `0,0 8x8`. Ryan's monitors start at x=4620, so grim answers `supplied geometry did not intersect with any outputs`. Real captures work. The check should use a pixel inside the first monitor's logical rect.
 
+### Session discovery paired one compositor's signature with another's display (fixed)
+
+An MCP client starts its servers with a stripped environment (no `HYPRLAND_INSTANCE_SIGNATURE`, no `WAYLAND_DISPLAY`), so hypruse discovers them. The old discovery took the newest Hyprland instance's signature and, separately, the alphabetically first `wayland-*` socket. With a desk running, that was the desk's signature and the host's `wayland-1`: `desktop` described the desk while clicks and keys went to the host. It reproduced through a real MCP stdio client: after `target("here")`, `desktop` still listed the desk's single `WAYLAND-1` monitor.
+
+Each instance's `$XDG_RUNTIME_DIR/hypr/<sig>/hyprland.lock` holds its pid and its Wayland socket, so `session.py` now takes the pair from one lock file. It skips desks listed under `hypruse/desks/*/env`, then prefers a top-level compositor over a nested one (a nested Hyprland's process carries its parent's `WAYLAND_DISPLAY` in `/proc/<pid>/environ`; the host's has none), then the newest. Instances whose lock pid is dead are ignored; stopped desks leave their directories behind. This bug exists upstream for anyone running more than one Hyprland.
+
+### SUPER plus any key arrived as SUPER+Escape (fixed)
+
+`keyboard key super+k` in a desk opened Omarchy's System menu (`SUPER+ESCAPE`), and so did `super+space`. wtype, and hypruse's own wire keyboard, upload a throwaway keymap holding only the combo's keys, numbered from evdev 1. Hyprland matched the bind on the raw keycode through the real layout, and evdev 1 is `KEY_ESC`.
+
+Combos now go out on the active layout's full keymap (built with libxkbcommon from `hyprctl devices`, including Omarchy's own `omarchy:shift_caps_compose` option) at the codes a physical keyboard sends: `Super_L` 125, `k` 37, `space` 57. After the fix `super+k` opened Keybindings and `super+space` the Omarchy menu. On the host, the old behavior meant an agent pressing any SUPER shortcut opened the System menu, one `Return` away from Screensaver and two keys from Suspend.
+
+Upstream's instructions say synthetic keys can't trigger compositor binds. On Hyprland 0.57 they can, and with real keycodes they trigger the right one. The wire keyboard also had never run on the default seat: `create_virtual_keyboard` needs a bound `wl_seat` (the pointer manager accepts null), and the seat has to be bound before the keyboard's id is allocated, because libwayland wants new ids in sequence.
+
+### `use_bind` can't run Omarchy's binds
+
+Under the Lua config manager a bind's action is a closure (`hyprctl binds` shows `HL.Dispatcher(exec_cmd) 342`), and hypruse has no way to invoke it from outside, so `use_bind SUPER+K` errors. Nearly every Omarchy bind is like that. Real key events are the way to fire them.
+
+### Driving Omarchy's shell
+
+- Menus and bar panels are full-screen overlay layers that take the keyboard grab: `omarchy-menu`, `omarchy-image-selector` (the theme carousel), and `omarchy-keyboard-panel` (the Audio panel and friends). hypruse's note that a launcher layer "covers this point" or "holds the keyboard grab" is accurate while one is open.
+- A menu bound to a key takes about a second to map. Block on `wait_for layer_open --match omarchy-menu` instead of sleeping.
+- Typing filters the menu: `super+space`, type `appearance`, `Return`, `Return` lands on the theme carousel.
+
 ### Speed
 
 From the CLI, which pays Python startup on every call: `desktop` ~0.1 s, `screenshot` ~0.2 s, and click + type + Return + capture on a desk ~1.2 s across five invocations. The MCP server doesn't pay the per-call startup.
@@ -74,6 +105,8 @@ The desk loads Omarchy's Hyprland config from a scratch home and starts only the
 | Idle timers | An idle desk runs `omarchy-system-lock`, which also runs `1password --lock` and kills screensavers machine-wide | `idle.lock` and `idle.screensaver` set to 0 in the scratch `shell.json` |
 | System menu Logout | `omarchy-system logout` runs `uwsm stop`, which ends your real session | PATH guard: `uwsm stop` exits the desk instead |
 | System menu Suspend/Reboot/Shutdown | `systemctl suspend`/`reboot`/`poweroff` on the real machine | PATH guards refuse power verbs in `systemctl`, `loginctl`, `shutdown`, `reboot`, `poweroff`, `halt`, and post a notification inside the desk |
+| Anything run as root | A desk's theme switch rewrote `/etc/brave/policies/managed/color.json` and `/etc/chromium/...` through `omarchy-theme-set-browser-policy`'s passwordless sudo rule, so the user's real browser turned Vantablack black | PATH guards refuse `sudo`, `pkexec`, `run0`, `su`, `doas` |
+| Herdr theme sync | `omarchy-theme-set-herdr-machines` pushes the theme to the user's other machines over ssh when the `herdr-theme-sync` toggle is on | Seeding drops that toggle from the scratch state |
 
 The scratch home is seeded with `~/.config/omarchy`, `~/.config/hypr`, terminal and GTK configs, the bash dotfiles, and `~/.local/state/omarchy` minus `clipboard-history.json` and `clipboard-images` (211 MB of your clipboard; private and not needed). `~/.local/share/fonts` is symlinked.
 
@@ -86,7 +119,9 @@ What a desk doesn't isolate: hardware and system services. Audio (PipeWire), net
 - The bar, dock, wallpaper and theme come up (shell answers `omarchy-shell shell ping`).
 - Clicking the bar's volume icon opens the Audio panel.
 - `omarchy-notification-send -u normal` on the desk's bus shows a toast in the desk; `omarchy-shell notifications count` went 0 → 1 in the desk and stayed 0 on the host.
-- `SUPER+SPACE` through hypruse's virtual keyboard opens the Omarchy menu inside the desk while the host's focus stays where it was.
+- `super+space` through hypruse's keyboard opens the Omarchy menu inside the desk while the host's focus stays where it was (after the keycode fix; before it, the System menu).
+- A full theme switch through the UI (menu, Appearance, Theme, carousel, Return) changes the desk's theme and wallpaper. The host stayed on Tokyo Night, nothing under the host's `~/.config/omarchy` or theme state changed, and with the root guard `/etc/brave/policies/managed/color.json` kept its timestamp while the desk showed `Desk guard` toasts for the refused `sudo -n -l` probe and `pkexec` fallback.
+- The leak this caught on the first run was undone by running `omarchy-theme-set-browser` on the host, which rewrote the policies from the host's theme (`#1a1b26`).
 - The host's `systemctl --user show-environment` still has the host `WAYLAND_DISPLAY` and signature after start.
 - The desk's `xdg-desktop-portal-hyprland` has the desk's signature and `wayland-2`.
 
@@ -94,4 +129,7 @@ What a desk doesn't isolate: hardware and system services. Audio (PipeWire), net
 
 - `/etc/omarchy.conf` exports `OMARCHY_PATH`, and `default/bash/env-bootstrap` sources it in every login shell. A desk started with `--omarchy-path <worktree>` has the worktree in the shell's own env, but every `bash -lc` the shell spawns switches back to the installed checkout. Testing a branch's commands in a desk needs Omarchy's bootstrap to keep an `OMARCHY_PATH` that's already set.
 - `omarchy-system-lock` still `pkill`s screensavers by path, machine-wide.
+- `omarchy-theme-set-browser` picks the browsers to refresh from the machine's whole process list, then runs `brave-origin --refresh-platform-policy --no-startup-window` in its own session, even when the policy write failed. In a desk that starts a second Brave on the desk's fresh profile, and `--no-startup-window` doesn't stop its first-run window. Omarchy-side fix: only refresh browsers in the caller's session, and skip the refresh when the policy didn't change.
+- Theme switches also signal host apps (`killall -SIGUSR1 kitty`, `pkill -USR1 helix`, btop, ghostty, opencode, hunk, tmux). They reload their own, unchanged config, so it's harmless, but it's another machine-wide reach.
+- `omarchy-theme-set-keyboard` sets real keyboard backlight colors through `asusctl` on ASUS ROG machines. Not installed here, so untested.
 - `uwsm app` passes through to the real uwsm, which launches into the user's systemd session. Untested what env those apps get.
