@@ -91,6 +91,10 @@ seed_home() {
     fi
   done
 
+  # Theme sync pushes every theme change to the user's other machines over
+  # ssh (omarchy-theme-set-herdr-machines); a desk's theme is its own.
+  rm -f "$home/.local/state/omarchy/toggles/herdr-theme-sync"
+
   local shell_json="$home/.config/omarchy/shell.json"
   if [[ -f $shell_json ]]; then
     jq '.idle = { lock: 0, screensaver: 0 }' "$shell_json" >"$shell_json.tmp"
