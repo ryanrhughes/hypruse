@@ -82,6 +82,12 @@ seed_home() {
     esac
   done
 
+  # mise's trust list lives in its state dir, so without it every shell in
+  # the desk warns that the user's own mise config is untrusted.
+  if [[ -d $XDG_STATE_HOME/mise ]]; then
+    cp -a --reflink=auto "$XDG_STATE_HOME/mise" "$home/.local/state/"
+  fi
+
   if [[ -d $XDG_DATA_HOME/fonts ]]; then
     ln -s "$XDG_DATA_HOME/fonts" "$home/.local/share/fonts"
   fi
