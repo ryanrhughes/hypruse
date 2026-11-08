@@ -37,3 +37,21 @@ def test_control_characters_map_to_their_keys():
 def test_a_keypad_name_is_not_turned_into_a_main_row_key():
     # KP_1 is not "1": on AZERTY that would be Shift and ampersand
     assert keymap.for_layout("fr").chord_for_key("KP_1") is None
+
+
+def test_real_keys_sit_at_their_evdev_codes():
+    # a generated keymap put every combo's first key on evdev 1 (KEY_ESC), so
+    # Hyprland read SUPER plus any key as SUPER+Escape (Omarchy's System menu)
+    real = keymap.RealKeys("us")
+    assert real.text.startswith(b"xkb_keymap")
+    assert real.code("Super_L") == 125
+    assert real.code("Control_L") == 29
+    assert real.code("k") == 37
+    assert real.code("space") == 57
+    assert real.code("Escape") == 1
+    assert real.code("/") == 53  # a literal character goes through its keysym
+    assert real.code("K") is None  # shifted: not where any key sits unshifted
+
+
+def test_real_keys_follow_the_layout():
+    assert keymap.RealKeys("fr").code("a") == keymap.RealKeys("us").code("q")

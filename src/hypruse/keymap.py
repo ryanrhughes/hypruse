@@ -47,6 +47,8 @@ def _lib() -> ctypes.CDLL | None:
     lib.xkb_keysym_get_name.argtypes = [ctypes.c_uint32, ctypes.c_char_p, ctypes.c_size_t]
     lib.xkb_keysym_from_name.restype = ctypes.c_uint32
     lib.xkb_keysym_from_name.argtypes = [ctypes.c_char_p, ctypes.c_int]
+    lib.xkb_keymap_get_as_string.restype = ctypes.c_void_p
+    lib.xkb_keymap_get_as_string.argtypes = [ctypes.c_void_p, ctypes.c_int]
     return lib
 
 
@@ -102,3 +104,69 @@ class Keymap:
 @functools.cache
 def for_layout(layout: str, variant: str = "", options: str = "") -> Keymap:
     return Keymap(layout, variant, options)
+
+
+_XKB_KEYMAP_FORMAT_TEXT_V1 = 1
+_EVDEV_OFFSET = 8  # XKB keycode = evdev code + 8
+
+
+class RealKeys:
+    """A layout's full keymap, and where each key sits on it.
+
+    A key combo sent with a keymap generated for just that combo (wtype's,
+    or wire._keymap_for_combo) puts its keys on made-up keycodes counting
+    up from evdev 1. Hyprland resolves some binds from the raw keycode
+    through the keyboard layout it knows, so on Hyprland 0.57 SUPER plus
+    ANY key arrived as SUPER+Escape (evdev 1 is KEY_ESC) and opened
+    Omarchy's System menu. Sending each key at its real evdev code on the
+    layout's real keymap means the same thing however it's read."""
+
+    def __init__(self, layout: str, variant: str = "", options: str = ""):
+        self.text: bytes = b""
+        self._codes: dict[str, int] = {}
+        lib = _lib()
+        if lib is None:
+            return
+        ctx = lib.xkb_context_new(0)
+        names = _RuleNames(b"evdev", b"pc105", layout.encode(), variant.encode(),
+                           options.encode() or None)
+        km = lib.xkb_keymap_new_from_names(ctx, ctypes.byref(names), 0)
+        if not km:
+            return
+        raw = lib.xkb_keymap_get_as_string(km, _XKB_KEYMAP_FORMAT_TEXT_V1)
+        if not raw:
+            return
+        self.text = ctypes.string_at(raw) + b"\0"
+        for kc in range(lib.xkb_keymap_min_keycode(km), lib.xkb_keymap_max_keycode(km) + 1):
+            syms = ctypes.POINTER(ctypes.c_uint32)()
+            if lib.xkb_keymap_key_get_syms_by_level(km, kc, 0, 0, ctypes.byref(syms)) < 1:
+                continue
+            buf = ctypes.create_string_buffer(64)
+            lib.xkb_keysym_get_name(syms[0], buf, 64)
+            name = buf.value.decode()
+            # the first key wins: Return before KP_Enter's twin, the main row
+            # before the keypad
+            if name and name not in self._codes and kc > _EVDEV_OFFSET:
+                self._codes[name] = kc - _EVDEV_OFFSET
+
+    def code(self, name: str) -> int | None:
+        """The evdev code of the key whose unshifted symbol is `name`, or
+        None when no key on this layout produces it without a modifier."""
+        if not self.text:
+            return None
+        if name in self._codes:
+            return self._codes[name]
+        if len(name) == 1:
+            lib = _lib()
+            if lib is not None:
+                # a literal character: "k", or "/" whose keysym is "slash"
+                sym = lib.xkb_keysym_from_name(f"U{ord(name):04X}".encode(), 0)
+                buf = ctypes.create_string_buffer(64)
+                if sym and lib.xkb_keysym_get_name(sym, buf, 64) > 0:
+                    return self._codes.get(buf.value.decode())
+        return None
+
+
+@functools.cache
+def real_keys(layout: str, variant: str = "", options: str = "") -> RealKeys:
+    return RealKeys(layout, variant, options)

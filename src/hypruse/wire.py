@@ -490,10 +490,35 @@ class VirtualKeyboard(VirtualPointer):
             + wl_string(VK_INTERFACE)
             + struct.pack("<II", min(version, 1), mgr),
         )
+        # before kb's id is taken: the server wants new ids in sequence, so a
+        # seat bound with a later id ahead of kb's create is a protocol error
+        seat = self._seat or self._default_seat()
         kb = self._new_id()
-        self._send(mgr, VK_CREATE, struct.pack("<II", self._seat, kb))
+        self._send(mgr, VK_CREATE, struct.pack("<II", seat, kb))
         self._roundtrip()
         return kb
+
+    def _default_seat(self) -> int:
+        """A bound wl_seat for create_virtual_keyboard, which (unlike the
+        pointer manager's create) takes no null seat. Only reached on the
+        compositor's default seat, so the first one advertised is it."""
+        if getattr(self, "_default_seat_id", 0):
+            return self._default_seat_id
+        seats = [(n, v) for n, i, v in self._globals_cache if i == SEAT_INTERFACE]
+        if not seats:
+            raise WireError(f"compositor does not advertise {SEAT_INTERFACE}")
+        name, version = seats[0]
+        oid = self._new_id()
+        self._send(
+            self._registry,
+            0,
+            struct.pack("<I", name)
+            + wl_string(SEAT_INTERFACE)
+            + struct.pack("<II", min(version, 9), oid),
+        )
+        self._roundtrip()
+        self._default_seat_id = oid
+        return oid
 
     def _upload_keymap(self, kb: int, keymap: bytes) -> None:
         """The protocol requires a keymap before any key event, passed as an fd."""
@@ -506,6 +531,21 @@ class VirtualKeyboard(VirtualPointer):
                 [msg], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, struct.pack("i", tf.fileno()))]
             )
             self._roundtrip()
+
+    def press_codes(self, keymap: bytes, codes: list[int]) -> None:
+        """Press `codes` (evdev) in order and release them in reverse, on a
+        keyboard carrying `keymap`, a real layout's full keymap (see
+        keymap.RealKeys): every key goes out at the code a physical
+        keyboard would send."""
+        if not codes:
+            raise WireError("combo resolved to nothing")
+        kb = self._new_keyboard()
+        self._upload_keymap(kb, keymap)
+        for code in codes:
+            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, PRESSED))
+        for code in reversed(codes):
+            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, RELEASED))
+        self._roundtrip()
 
     def key_combo(self, mods: list[str], key: str | None) -> None:
         """Press a combo on this seat.

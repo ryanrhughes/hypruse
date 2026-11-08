@@ -21,8 +21,16 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from hypruse import hyprctl, journal
-from hypruse.wire import BUTTONS, PRESSED, RELEASED, VirtualKeyboard, VirtualPointer, WireError
+from hypruse import hyprctl, journal, keymap
+from hypruse.wire import (
+    BUTTONS,
+    COMBO_MOD_KEYSYM,
+    PRESSED,
+    RELEASED,
+    VirtualKeyboard,
+    VirtualPointer,
+    WireError,
+)
 
 
 class InputError(RuntimeError):
@@ -144,10 +152,39 @@ def type_text(text: str) -> None:
         _wtype(["-"], stdin=text)  # '-' reads stdin: safe for any content
 
 
+def _real_combo(mods: list[str], key: str | None) -> tuple[bytes, list[int]] | None:
+    """(keymap, evdev codes) for a combo on the active layout's real keymap,
+    or None when the layout can't be built or lacks one of the keys (the
+    caller falls back to a generated keymap). See keymap.RealKeys for why."""
+    with contextlib.suppress(Exception):
+        real = keymap.real_keys(*hyprctl.active_layout())
+        codes: list[int] = []
+        for m in mods:
+            sym = COMBO_MOD_KEYSYM.get(m)
+            code = real.code(sym) if sym else None
+            if code is None:
+                return None
+            codes.append(code)
+        if key:
+            code = real.code(key)
+            if code is None and len(key) == 1:
+                # "super+K" names the K key, the way Hyprland binds are written
+                code = real.code(key.lower())
+            if code is None:
+                return None
+            codes.append(code)
+        return (real.text, codes) if codes else None
+    return None
+
+
 def key_combo(combo: str) -> None:
     journal.refuse_if_dry("key_combo")
     mods, key = parse_combo(combo)
     with _seat_lock:
+        real = _real_combo(mods, key)
+        if real is not None:
+            _with_keyboard(lambda k: k.press_codes(*real))
+            return
         # Same reason as type_text: wtype cannot name a seat, so on a second seat
         # the combo would fire on the human's keyboard.
         if _on_named_seat():

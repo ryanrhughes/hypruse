@@ -105,3 +105,39 @@ def test_release_held_releases_mid_drag_state(monkeypatch):
     assert hinput._held_button is None
     hinput.release_held()  # idempotent: nothing held, nothing sent
     assert vp.events == [("left", RELEASED)]
+
+
+def test_key_combo_presses_real_keycodes_on_the_real_layout(monkeypatch):
+    import ctypes.util
+
+    import pytest
+
+    if ctypes.util.find_library("xkbcommon") is None:
+        pytest.skip("libxkbcommon not installed")
+    from hypruse import input as hinput
+
+    monkeypatch.setattr(hinput.hyprctl, "active_layout", lambda: ("us", "", ""))
+    pressed = []
+
+    class Keyboard:
+        def press_codes(self, keymap, codes):
+            pressed.append(codes)
+
+    monkeypatch.setattr(hinput, "_with_keyboard", lambda fn: fn(Keyboard()))
+    monkeypatch.setattr(hinput, "_wtype", lambda *a, **k: pytest.fail("used wtype"))
+
+    hinput.key_combo("super+K")
+    hinput.key_combo("ctrl+shift+t")
+    assert pressed == [[125, 37], [29, 42, 20]]
+
+
+def test_key_combo_falls_back_when_the_layout_lacks_the_key(monkeypatch):
+    from hypruse import input as hinput
+
+    monkeypatch.setattr(hinput, "_real_combo", lambda mods, key: None)
+    monkeypatch.setattr(hinput, "_on_named_seat", lambda: False)
+    sent = []
+    monkeypatch.setattr(hinput, "_wtype", lambda args, stdin=None: sent.append(args))
+
+    hinput.key_combo("ctrl+udiaeresis")
+    assert sent == [["-M", "ctrl", "-k", "udiaeresis", "-m", "ctrl"]]
