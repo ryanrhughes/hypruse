@@ -80,6 +80,22 @@ def owned() -> set[str]:
     return set(_owned)
 
 
+def adopt_owned(addresses: set[str]) -> None:
+    """Replace the owned-set with another target's. Window addresses only
+    mean something on the compositor that issued them, so a target switch
+    (target.use) swaps the whole set rather than mixing two compositors'."""
+    _owned.clear()
+    _owned.update(addresses)
+
+
+def forget_seat() -> None:
+    """Drop the strict-mode baseline. After a target switch it describes a
+    different compositor's cursor, and comparing against it would refuse
+    the first action for a 'move' nobody made."""
+    _seat["cursor"] = None
+    _seat["active"] = None
+
+
 # --- cross-process state ------------------------------------------------------
 #
 # The owned-set, the strict seat baseline and the capture-notice limiter live

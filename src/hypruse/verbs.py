@@ -390,6 +390,12 @@ def run(tool: str, kwargs: dict[str, Any], *, json_out: bool = False,
     from hypruse import input as hinput
 
     session.ensure_session_env()
+    # before cli_state.restore: that state is kept per compositor instance
+    from hypruse import target
+    try:
+        target.from_env()
+    except target.TargetError as exc:
+        return _fail("error", str(exc), EXIT_ERROR)
     server.use_plain_blocks()  # a shell prints text and paths; no MCP types, no MCP import
     acting = tool in ACT or (tool == "clipboard" and kwargs.get("action") == "write")
     lock = None

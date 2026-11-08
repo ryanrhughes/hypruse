@@ -29,6 +29,7 @@ from hypruse import background as bg
 from hypruse import clipboard as clip
 from hypruse import input as hinput
 from hypruse import screenshot as shot
+from hypruse import target as _target
 
 INSTRUCTIONS = """\
 hypruse controls a live Hyprland desktop. Workflow: call `desktop` first
@@ -60,6 +61,11 @@ call: it stops if
 the desktop changes structurally between steps, so you spend one
 round-trip instead of one per step. It does not catch a bare focus change,
 so give a keyboard step a window= address when typing matters.
+
+Desks: `target` lists and switches the desktop every other tool drives.
+'here' is the human's own desktop; a desk is a nested Hyprland with its
+own cursor and focus, so work there never takes the human's mouse. When
+`desktop` has a `target` key you are in a desk, not on their screen.
 
 Coordinates: one space everywhere, Hyprland global logical pixels (window
 `at`, cursor, clicks). Screenshots are pixel space: map back with
@@ -258,6 +264,9 @@ def desktop() -> dict[str, Any]:
     # acting tool until the agent re-observes; this read IS that
     # re-observation, so it re-arms the guard (as its error advises)
     trust.remember_seat()
+    if _target.current() != _target.HERE:
+        # first key, so a reader can't miss that this is not the human's desktop
+        snap = {"target": _target.current(), **snap}
     return snap
 
 
@@ -1920,6 +1929,32 @@ def binds() -> list[dict[str, Any]]:
     return hyprctl.binds()
 
 
+@journal.journaled(lambda args: "act" if args.get("name") else "observe")
+def target(name: str = "") -> dict[str, Any]:
+    """Which desktop the other tools drive. No name: report the current
+    target and the desks available. name='here': the human's own desktop,
+    one seat shared with them (acting in the foreground moves their cursor
+    and focus). name=<desk>: a desk, a nested Hyprland with a seat of its
+    own (its own cursor and focus), started outside hypruse with
+    `hypruse-desk start <name>`. Work in a desk never touches the human's
+    cursor or windows, so prefer one for long or exploratory work and
+    anything the human didn't ask to watch; use 'here' when they asked you
+    to act on their own windows. Audio, network and power in a desk are
+    still the real machine. Switching forgets marks and which windows you
+    launched on the other target; call `desktop` after switching."""
+    global _last_marks
+    if name:
+        try:
+            result = _target.use(name)
+        except _target.TargetError as exc:
+            raise ValueError(str(exc)) from exc
+        _last_marks = {}
+    else:
+        result = _target.describe()
+    result["desks"] = _target.desks()
+    return result
+
+
 # The one tool that both reads and writes: a clipboard READ is the agent
 # looking at something the human owns (an observation a privacy audit
 # wants), a WRITE changes state (an action replay re-issues).
@@ -2508,6 +2543,7 @@ _TITLES = {
     "use_bind": "Run a keybind",
     "sequence": "Run several actions",
     "clipboard": "Clipboard",
+    "target": "Choose the desktop",
 }
 
 
@@ -2550,6 +2586,10 @@ def build_app() -> Any:
         app_.tool(annotations=ToolAnnotations(
             title=_TITLES[name], readOnlyHint=True, openWorldHint=False
         ))(_one_at_a_time(observe_tool))
+    # read-only too: it changes which desktop the tools see, not the desktop
+    app_.tool(annotations=ToolAnnotations(
+        title=_TITLES["target"], readOnlyHint=True, openWorldHint=False
+    ))(_one_at_a_time(target))
     if not READONLY:
         acting = [pointer, keyboard, click_ui, hypr, launch, use_bind, sequence]
         if CLIPBOARD:
@@ -2593,6 +2633,11 @@ def main() -> None:
         print(_INTERACTIVE_HELP.format(version=__version__), file=sys.stderr)
         return
     session.ensure_session_env()
+    try:
+        _target.from_env()
+    except _target.TargetError as exc:
+        print(f"hypruse: HYPRUSE_TARGET: {exc}", file=sys.stderr)
+        sys.exit(1)
     safety.init()
     safety.on_shutdown(hinput.release_held)  # kill switch mid-drag: release first
     journal.start(__version__)  # HYPRUSE_JOURNAL: open the session record

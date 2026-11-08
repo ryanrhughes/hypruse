@@ -177,6 +177,22 @@ def release_held() -> None:
     _held_button = None
 
 
+def drop_devices() -> None:
+    """Close the virtual pointer and keyboard so the next action opens them
+    on whatever compositor WAYLAND_DISPLAY names by then. A target switch
+    calls this: both are bound to the Wayland socket they were opened on,
+    and a stale one would keep clicking the desktop the agent just left."""
+    global _vp, _vk
+    with _seat_lock:
+        release_held()
+        for device in (_vp, _vk):
+            if device is not None:
+                with contextlib.suppress(Exception):
+                    device.close()
+        _vp = None
+        _vk = None
+
+
 def _with_keyboard(fn: Callable[[VirtualKeyboard], Any]) -> Any:
     """Run fn with the shared virtual keyboard, reconnecting once if stale."""
     global _vk
