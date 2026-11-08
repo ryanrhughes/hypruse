@@ -167,7 +167,14 @@ done
 exec "$(real 1password)" "$@"
 EOF
 
+  # Nothing in a desk runs as root: whatever root changes is the machine's,
+  # not the desk's. omarchy-theme-set-browser-policy proved it, rewriting
+  # /etc/brave/policies through a passwordless sudo rule, so a desk's theme
+  # switch recolored the user's real browser.
   local cmd
+  for cmd in sudo pkexec run0 su doas; do
+    printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nrefuse %s "$@"\n' "$cmd" >"$dir/$cmd"
+  done
   for cmd in shutdown reboot poweroff halt; do
     printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nrefuse %s "$@"\n' "$cmd" >"$dir/$cmd"
   done
