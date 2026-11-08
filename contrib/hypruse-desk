@@ -1,0 +1,399 @@
+#!/bin/bash
+
+# Prototype: run an isolated nested Hyprland "desk" for hypruse to drive.
+#
+# A desk is a second Hyprland running as one window on the host. It has its own
+# seat, so the agent gets its own cursor, focus and clipboard while the human
+# keeps theirs. Two profiles:
+#
+#   bare     A plain Hyprland with nothing running in it.
+#   omarchy  The full Omarchy desktop (shell, bar, menus, plugins), cut off from
+#            the host session: a scratch HOME and XDG dirs seeded from the user's
+#            config, a private D-Bus session bus, and none of the autostart that
+#            reaches past the session (systemd env export, first-run, power
+#            profiles, monitor watch, udiskie, post-boot hooks). Idle lock and
+#            screensaver are off, since an agent's desk sits idle most of the
+#            time and omarchy-system-lock also locks host apps like 1Password.
+#
+# What a desk does NOT isolate: hardware and system services. Audio (PipeWire),
+# network, Bluetooth, brightness and power all act on the real machine.
+#
+# Usage:
+#   hypruse-desk start [NAME] [--profile omarchy|bare] [--size WxH]
+#                      [--workspace WS] [--omarchy-path DIR] [--fresh]
+#   hypruse-desk stop NAME [--purge]
+#   hypruse-desk env NAME          export lines for driving the desk
+#   hypruse-desk run NAME -- CMD   run CMD against the desk (e.g. hypruse ...)
+#   hypruse-desk show NAME         bring the desk window up on the host
+#   hypruse-desk list
+
+set -euo pipefail
+
+RUN_ROOT="$XDG_RUNTIME_DIR/hypruse/desks"
+DATA_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/hypruse/desks"
+HOST_RULE="hypruse-desk"
+
+die() {
+  echo "hypruse-desk: $*" >&2
+  exit 1
+}
+
+usage() {
+  sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+desk_alive() {
+  local run="$RUN_ROOT/$1"
+  [[ -f $run/env ]] || return 1
+  local pid
+  pid=$(<"$run/hyprland.pid")
+  kill -0 "$pid" 2>/dev/null
+}
+
+# The host never sends frame callbacks to a window it isn't showing, and a
+# nested Hyprland that gets none never renders, so screenshots of a hidden desk
+# hang forever. render_unfocused keeps frames coming. Named, so re-applying it
+# replaces the rule instead of stacking copies.
+apply_host_rule() {
+  local workspace=$1 width=${2%x*} height=${2#*x}
+  hyprctl eval "hl.window_rule({ name = \"$HOST_RULE\", enabled = true, match = { class = \"^aquamarine$\" }, render_unfocused = true, float = true, size = \"$width $height\", workspace = \"$workspace silent\" })" >/dev/null
+}
+
+seed_home() {
+  local home=$1
+  rm -rf "$home"
+  mkdir -p "$home/.config" "$home/.local/state/omarchy" "$home/.local/share" "$home/.cache"
+
+  cp -a --reflink=auto "$XDG_CONFIG_HOME/omarchy" "$XDG_CONFIG_HOME/hypr" "$home/.config/"
+  local item
+  for item in alacritty foot ghostty kitty gtk-3.0 gtk-4.0 fontconfig starship.toml mimeapps.list xdg-terminals.list; do
+    if [[ -e $XDG_CONFIG_HOME/$item ]]; then
+      cp -a --reflink=auto "$XDG_CONFIG_HOME/$item" "$home/.config/"
+    fi
+  done
+
+  # Theme and shell state, but never the clipboard history: it is the user's
+  # private data and most of the directory's size.
+  for item in "$XDG_STATE_HOME"/omarchy/*; do
+    case ${item##*/} in
+      clipboard-history.json | clipboard-images) ;;
+      *) cp -a --reflink=auto "$item" "$home/.local/state/omarchy/" ;;
+    esac
+  done
+
+  if [[ -d $XDG_DATA_HOME/fonts ]]; then
+    ln -s "$XDG_DATA_HOME/fonts" "$home/.local/share/fonts"
+  fi
+  for item in .bashrc .bash_profile .inputrc; do
+    if [[ -e $HOME/$item ]]; then
+      cp -a "$HOME/$item" "$home/"
+    fi
+  done
+
+  local shell_json="$home/.config/omarchy/shell.json"
+  if [[ -f $shell_json ]]; then
+    jq '.idle = { lock: 0, screensaver: 0 }' "$shell_json" >"$shell_json.tmp"
+    mv "$shell_json.tmp" "$shell_json"
+  else
+    echo '{ "idle": { "lock": 0, "screensaver": 0 } }' >"$shell_json"
+  fi
+}
+
+# Commands that would reach past the desk to the real machine or session. They
+# sit first on the desk's PATH: power and session verbs are refused, `uwsm stop`
+# (Omarchy's logout) exits the desk instead of the user's session, and the
+# desk's lock doesn't lock the user's 1Password.
+write_guards() {
+  local dir=$1
+  mkdir -p "$dir"
+
+  cat >"$dir/_guard" <<'EOF'
+# Sourced by each guard: finds the real command behind this directory.
+guard_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+real() {
+  PATH=$(tr ':' '\n' <<<"$PATH" | grep -vx "$guard_dir" | paste -sd:) command -v "$1"
+}
+refuse() {
+  echo "hypruse desk: refused '$*': it would act on the real machine, not this desk" >&2
+  omarchy-notification-send -u critical "Desk guard" "Refused: $*" >/dev/null 2>&1 || true
+  exit 1
+}
+EOF
+
+  cat >"$dir/systemctl" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/_guard"
+for arg in "$@"; do
+  case $arg in
+    suspend | hibernate | hybrid-sleep | suspend-then-hibernate | sleep | reboot | soft-reboot | \
+      poweroff | halt | kexec | isolate | rescue | emergency) refuse systemctl "$@" ;;
+  esac
+done
+exec "$(real systemctl)" "$@"
+EOF
+
+  cat >"$dir/loginctl" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/_guard"
+for arg in "$@"; do
+  case $arg in
+    lock-session | lock-sessions | unlock-session | unlock-sessions | terminate-* | kill-* | \
+      suspend | hibernate | hybrid-sleep | suspend-then-hibernate | sleep | reboot | poweroff | halt) refuse loginctl "$@" ;;
+  esac
+done
+exec "$(real loginctl)" "$@"
+EOF
+
+  cat >"$dir/uwsm" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/_guard"
+if [[ ${1:-} == "stop" ]]; then
+  exec hyprctl dispatch 'hl.dsp.exit()'
+fi
+exec "$(real uwsm)" "$@"
+EOF
+
+  cat >"$dir/1password" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/_guard"
+for arg in "$@"; do
+  [[ $arg == "--lock" ]] && exit 0
+done
+exec "$(real 1password)" "$@"
+EOF
+
+  local cmd
+  for cmd in shutdown reboot poweroff halt; do
+    printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nrefuse %s "$@"\n' "$cmd" >"$dir/$cmd"
+  done
+  chmod +x "$dir"/*
+  chmod -x "$dir/_guard"
+}
+
+write_config() {
+  local profile=$1 config=$2 size=$3
+  local monitor="hl.monitor({ output = \"\", mode = \"$size\", position = \"0x0\", scale = \"1\" })"
+
+  if [[ $profile == "omarchy" ]]; then
+    cat >"$config" <<EOF
+-- hypruse desk: Omarchy without anything that reaches past this desk.
+dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
+
+-- default.hypr.omarchy requires autostart unconditionally; mark it loaded so
+-- none of the host-wide startup runs here.
+package.loaded["default.hypr.autostart"] = true
+
+require("default.hypr.omarchy")
+require("hypr.input")
+require("hypr.bindings")
+require("hypr.looknfeel")
+require("default.hypr.toggles")
+
+$monitor
+
+-- The desk's own bus learns the desk's display before anything is activated on
+-- it. No --systemd: that would point the user's session at this desk.
+hl.on("hyprland.start", function()
+  hl.exec_cmd("dbus-update-activation-environment --all && omarchy-launch-shell")
+end)
+EOF
+  else
+    cat >"$config" <<EOF
+-- hypruse desk: a bare Hyprland.
+$monitor
+hl.config({
+  general = { gaps_in = 2, gaps_out = 4, border_size = 1 },
+  animations = { enabled = false },
+  decoration = { blur = { enabled = false }, shadow = { enabled = false } },
+  misc = { disable_hyprland_logo = true, disable_splash_rendering = true, force_default_wallpaper = 0 },
+})
+hl.on("hyprland.start", function()
+  hl.exec_cmd("dbus-update-activation-environment --all")
+end)
+EOF
+  fi
+}
+
+cmd_start() {
+  local name="desk" profile="omarchy" size="1600x1000" workspace="special:hypruse"
+  local omarchy_path="${OMARCHY_PATH:-}" fresh=0
+
+  while (( $# )); do
+    case $1 in
+      --profile) profile=$2; shift 2 ;;
+      --size) size=$2; shift 2 ;;
+      --workspace) workspace=$2; shift 2 ;;
+      --omarchy-path) omarchy_path=$(realpath "$2"); shift 2 ;;
+      --fresh) fresh=1; shift ;;
+      -*) die "unknown option $1" ;;
+      *) name=$1; shift ;;
+    esac
+  done
+
+  [[ $profile == "omarchy" || $profile == "bare" ]] || die "profile must be omarchy or bare"
+  [[ $size =~ ^[0-9]+x[0-9]+$ ]] || die "size must be WxH"
+  [[ $name =~ ^[A-Za-z0-9_-]+$ ]] || die "name may only use letters, digits, - and _"
+  if [[ $profile == "omarchy" && ! -d $omarchy_path/shell ]]; then
+    die "no Omarchy checkout at '$omarchy_path' (set OMARCHY_PATH or pass --omarchy-path)"
+  fi
+  if desk_alive "$name"; then
+    die "desk '$name' is already running"
+  fi
+
+  local run="$RUN_ROOT/$name" data="$DATA_ROOT/$name"
+  local home="$data/home"
+  rm -rf "$run"
+  mkdir -p -m 0700 "$run" "$data"
+
+  if [[ $profile == "omarchy" ]] && (( fresh )) || [[ $profile == "omarchy" && ! -d $home ]]; then
+    seed_home "$home"
+  fi
+  mkdir -p "$home/.config" "$home/.local/state" "$home/.local/share" "$home/.cache"
+  write_config "$profile" "$run/hyprland.lua" "$size"
+  write_guards "$run/bin"
+
+  apply_host_rule "$workspace" "$size"
+
+  local before
+  before=$(hyprctl instances -j | jq -r '.[].instance')
+
+  (
+    cd "$home"
+    export HOME="$home"
+    export XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state"
+    export XDG_DATA_HOME="$home/.local/share" XDG_CACHE_HOME="$home/.cache"
+    export OMARCHY_PATH="$omarchy_path"
+    export PATH="$run/bin:$PATH"
+
+    # The bus starts without the host's display or compositor in its
+    # environment, so nothing it activates can reach the host session. The
+    # desk fills in its own once it is up (see the config's hyprland.start).
+    env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
+      dbus-daemon --session --address="unix:path=$run/bus" --fork --print-pid >"$run/bus.pid"
+
+    unset HYPRLAND_INSTANCE_SIGNATURE
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$run/bus"
+    exec setsid Hyprland --config "$run/hyprland.lua" >"$run/hyprland.log" 2>&1 </dev/null
+  ) &
+
+  local instance="" attempt
+  for (( attempt = 0; attempt < 60; attempt++ )); do
+    instance=$(hyprctl instances -j | jq -r --arg before "$before" \
+      '[.[] | select(.instance as $i | ($before | split("\n") | index($i)) | not)][0] // empty | "\(.instance) \(.pid) \(.wl_socket)"')
+    [[ -n $instance ]] && break
+    sleep 0.25
+  done
+  if [[ -z $instance ]]; then
+    [[ -s $run/bus.pid ]] && kill "$(<"$run/bus.pid")" 2>/dev/null
+    die "nested Hyprland did not start; see $run/hyprland.log"
+  fi
+
+  local signature pid socket
+  read -r signature pid socket <<<"$instance"
+  echo "$pid" >"$run/hyprland.pid"
+
+  # Only what a driver needs to reach the desk. Apps the agent launches go
+  # through the desk's compositor and inherit the desk's HOME from it.
+  cat >"$run/env" <<EOF
+HYPRLAND_INSTANCE_SIGNATURE=$signature
+WAYLAND_DISPLAY=$socket
+DBUS_SESSION_BUS_ADDRESS=unix:path=$run/bus
+HYPRUSE_BACKGROUND=0
+HYPRUSE_DESK=$name
+EOF
+  cat >"$run/info" <<EOF
+profile=$profile
+home=$home
+omarchy_path=$omarchy_path
+workspace=$workspace
+size=$size
+EOF
+
+  echo "desk '$name' ($profile) on $socket, host workspace $workspace"
+  echo "drive it:  hypruse-desk run $name -- hypruse desktop"
+}
+
+cmd_stop() {
+  local name=${1:-} purge=0
+  [[ -n $name ]] || die "stop needs a desk name"
+  [[ ${2:-} == "--purge" ]] && purge=1
+  local run="$RUN_ROOT/$name"
+  [[ -d $run ]] || die "no desk '$name'"
+
+  if desk_alive "$name"; then
+    local pid
+    pid=$(<"$run/hyprland.pid")
+    env $(cat "$run/env") hyprctl dispatch 'hl.dsp.exit()' >/dev/null 2>&1 || true
+    local attempt
+    for (( attempt = 0; attempt < 40; attempt++ )); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.25
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+  fi
+  if [[ -f $run/bus.pid ]]; then
+    kill "$(<"$run/bus.pid")" 2>/dev/null || true
+  fi
+  rm -rf "$run"
+  if (( purge )); then
+    rm -rf "${DATA_ROOT:?}/$name"
+  fi
+  echo "desk '$name' stopped"
+}
+
+cmd_env() {
+  local name=${1:-}
+  desk_alive "$name" || die "desk '$name' is not running"
+  sed 's/^/export /' "$RUN_ROOT/$name/env"
+}
+
+cmd_run() {
+  local name=${1:-}
+  shift || true
+  [[ ${1:-} == "--" ]] && shift
+  (( $# )) || die "run needs a command"
+  desk_alive "$name" || die "desk '$name' is not running"
+  exec env $(cat "$RUN_ROOT/$name/env") "$@"
+}
+
+cmd_show() {
+  local name=${1:-}
+  desk_alive "$name" || die "desk '$name' is not running"
+  local workspace
+  workspace=$(sed -n 's/^workspace=//p' "$RUN_ROOT/$name/info")
+  if [[ $workspace == special:* ]]; then
+    hyprctl dispatch "hl.dsp.workspace.toggle_special(\"${workspace#special:}\")" >/dev/null
+  else
+    hyprctl dispatch "hl.dsp.focus({ workspace = \"$workspace\" })" >/dev/null
+  fi
+}
+
+cmd_list() {
+  local run name
+  for run in "$RUN_ROOT"/*/; do
+    [[ -d $run ]] || continue
+    name=$(basename "$run")
+    if desk_alive "$name"; then
+      echo "$name running $(sed -n 's/^profile=//p' "$run/info") $(sed -n 's/^WAYLAND_DISPLAY=//p' "$run/env")"
+    else
+      echo "$name stale"
+    fi
+  done
+}
+
+(( $# )) || usage 1
+command=$1
+shift
+case $command in
+  start) cmd_start "$@" ;;
+  stop) cmd_stop "$@" ;;
+  env) cmd_env "$@" ;;
+  run) cmd_run "$@" ;;
+  show) cmd_show "$@" ;;
+  list) cmd_list ;;
+  -h | --help | help) usage 0 ;;
+  *) die "unknown command $command" ;;
+esac
