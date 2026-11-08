@@ -68,11 +68,21 @@ def refuse(what: str, instead: str = "") -> NoReturn:
     raise trust.TrustError(f"{what}, so it cannot be done in the background: {hint}")
 
 
+# Named, not numbered. Omarchy gives every monitor a block of ten numbered
+# workspaces and renumbers any workspace with windows outside a block into
+# one on its next reconcile (a monitor plugged or unplugged, a config
+# reload): an agent window on 99 became the user's workspace 2, in their bar.
+# Named workspaces have no number, so the reconcile and the bar both skip
+# them. See docs/desks.md.
+DEFAULT_WORKSPACES = ",".join(f"name:agent-{i}" for i in range(1, 11))
+
+
 def agent_workspaces() -> list[str]:
     """HYPRUSE_AGENT_WORKSPACES as an ordered list of workspace selectors:
     `A-B` counts from A to B, a comma list keeps its order, `name:x` names
-    a workspace. Default 99-90. Malformed refuses, like HYPRUSE_CONFINE."""
-    raw = os.environ.get("HYPRUSE_AGENT_WORKSPACES", "99-90").strip()
+    a workspace. Default name:agent-1 to name:agent-10 (DEFAULT_WORKSPACES).
+    Malformed refuses, like HYPRUSE_CONFINE."""
+    raw = os.environ.get("HYPRUSE_AGENT_WORKSPACES", DEFAULT_WORKSPACES).strip()
     out: list[str] = []
     for part in (p.strip() for p in raw.split(",")):
         if part.startswith("name:") and part[5:]:

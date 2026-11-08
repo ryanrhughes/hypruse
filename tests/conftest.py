@@ -116,3 +116,11 @@ def no_live_accessibility(monkeypatch):
 
     monkeypatch.setattr(a11y, "connect", no_bus)
     monkeypatch.setattr(dbuswire, "connection", no_socket)
+
+
+@pytest.fixture(autouse=True)
+def numbered_agent_workspaces(monkeypatch):
+    """The placement tests were written against numbered agent workspaces
+    (99-90, upstream's default); the fork's default is named ones, which
+    test_background checks on its own."""
+    monkeypatch.setenv("HYPRUSE_AGENT_WORKSPACES", "99-90")

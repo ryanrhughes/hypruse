@@ -59,9 +59,11 @@ def _ws(i):
     return {"id": i, "name": str(i)}
 
 
-def test_the_default_range_counts_down_from_99(monkeypatch):
+def test_the_default_workspaces_are_named_so_omarchy_leaves_them_alone(monkeypatch):
+    # Omarchy renumbers a numbered workspace outside a monitor's block into
+    # the user's own on its next reconcile; named ones have no number
     monkeypatch.delenv("HYPRUSE_AGENT_WORKSPACES", raising=False)
-    assert bg.agent_workspaces() == [str(i) for i in range(99, 89, -1)]
+    assert bg.agent_workspaces() == [f"name:agent-{i}" for i in range(1, 11)]
 
 
 @pytest.mark.parametrize("raw, expect", [

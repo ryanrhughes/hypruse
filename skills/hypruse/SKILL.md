@@ -79,7 +79,8 @@ By default, an action on any window the human is not in runs in the
 background: their cursor, keyboard focus and workspace stay where they are.
 
 - `launch` with no `--workspace` opens the app on one of the agent's own
-  workspaces (99 down to 90 unless the owner set HYPRUSE_AGENT_WORKSPACES),
+  workspaces (named agent-1 to agent-10 unless the owner set
+  HYPRUSE_AGENT_WORKSPACES),
   out of the human's sight. Do your work there.
 - `click_ui NAME --window ADDR` presses the control through the
   accessibility tree, and `keyboard ... --window ADDR` types into the

@@ -559,8 +559,8 @@ Exit codes: 0, 1, 2, 3, 4.
 
 Notes: the command runs via Hyprland `exec` and the verb blocks on the real
 `openwindow` event, so the address it prints is the new window, nothing to
-poll. The agent's workspaces are HYPRUSE_AGENT_WORKSPACES (99 down to 90 by
-default), HYPRUSE_AGENT_FILL apps to each (default 1); one holding a window
+poll. The agent's workspaces are HYPRUSE_AGENT_WORKSPACES (named agent-1 to
+agent-10 by default), HYPRUSE_AGENT_FILL apps to each (default 1); one holding a window
 the agent did not open, or on screen, is skipped, and
 HYPRUSE_CONFINE=workspace:... narrows them. Under HYPRUSE_BACKGROUND=1 a
 `--workspace` outside them, or on screen, is refused (exit 3), and the

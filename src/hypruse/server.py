@@ -138,7 +138,9 @@ def _background_instructions() -> str:
     if mode == bg.OFF:
         return BACKGROUND_OFF
     raw = os.environ.get("HYPRUSE_AGENT_WORKSPACES", "").strip()
-    workspaces = f"HYPRUSE_AGENT_WORKSPACES={raw}" if raw else "workspaces 99 down to 90"
+    workspaces = (
+        f"HYPRUSE_AGENT_WORKSPACES={raw}" if raw else "the named workspaces agent-1 to agent-10"
+    )
     text = BACKGROUND_GUARANTEE if mode == bg.GUARANTEE else BACKGROUND_AUTO
     return text.format(workspaces=workspaces)
 
