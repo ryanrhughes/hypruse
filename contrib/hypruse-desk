@@ -187,6 +187,22 @@ EOF
   for cmd in shutdown reboot poweroff halt; do
     printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nrefuse %s "$@"\n' "$cmd" >"$dir/$cmd"
   done
+  # The desk's accessibility bus is a dbus-broker, and dbus-broker starts the
+  # services it activates through the user's systemd manager, in the host
+  # session's environment. Activating the AT-SPI registry that way failed
+  # ("unit failed", nothing in the journal), so no app in the desk had an
+  # accessibility tree. Started here instead, from the desk's own session and
+  # pointed at the desk's own a11y bus, it registers and apps show up.
+  cat >"$dir/hypruse-desk-a11y" <<'A11Y'
+#!/bin/bash
+address=$(busctl --user call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress | sed -n 's/^s "\(.*\)"$/\1/p')
+if [[ -z $address ]]; then
+  echo "hypruse desk: no accessibility bus on the desk's session bus" >&2
+  exit 1
+fi
+AT_SPI_BUS_ADDRESS=$address exec /usr/lib/at-spi2-registryd --use-gnome-session
+A11Y
+
   chmod +x "$dir"/*
   chmod -x "$dir/_guard"
 }
@@ -216,6 +232,7 @@ $monitor
 -- it. No --systemd: that would point the user's session at this desk.
 hl.on("hyprland.start", function()
   hl.exec_cmd("dbus-update-activation-environment --all && omarchy-launch-shell")
+  hl.exec_cmd("hypruse-desk-a11y")
 end)
 EOF
   else
@@ -230,6 +247,7 @@ hl.config({
 })
 hl.on("hyprland.start", function()
   hl.exec_cmd("dbus-update-activation-environment --all")
+  hl.exec_cmd("hypruse-desk-a11y")
 end)
 EOF
   fi
