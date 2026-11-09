@@ -10,6 +10,7 @@ test that wants the interesting state opts in explicitly.
 import pytest
 
 from hypruse import a11y, dbuswire, hyprctl, journal, server, trust
+from hypruse import input as hinput
 
 
 @pytest.fixture(autouse=True)
@@ -124,3 +125,27 @@ def numbered_agent_workspaces(monkeypatch):
     (99-90, upstream's default); the fork's default is named ones, which
     test_background checks on its own."""
     monkeypatch.setenv("HYPRUSE_AGENT_WORKSPACES", "99-90")
+
+
+@pytest.fixture(autouse=True)
+def no_live_input(monkeypatch):
+    """No virtual keyboard, virtual pointer or wtype reaches a real
+    compositor, unless a test stubs them.
+
+    Same rule, learned the hard way: with `hyprctl` stubbed, the layout
+    lookup falls back to "us", which still builds a real keymap, and a
+    use_bind test then opened a virtual keyboard on the developer's own
+    session and pressed SUPER+F there.
+    """
+
+    def no_device(*_args, **_kwargs):
+        raise hinput.WireError("no virtual input devices in unit tests")
+
+    def no_wtype(*_args, **_kwargs):
+        raise hinput.InputError("no wtype in unit tests")
+
+    monkeypatch.setattr(hinput, "VirtualKeyboard", no_device)
+    monkeypatch.setattr(hinput, "VirtualPointer", no_device)
+    monkeypatch.setattr(hinput, "_wtype", no_wtype)
+    monkeypatch.setattr(hinput, "_vk", None)
+    monkeypatch.setattr(hinput, "_vp", None)
