@@ -583,7 +583,7 @@ def main() -> None:
         Path(args.out).resolve() if args.out else BENCH / "results" / time.strftime("%Y%m%d-%H%M%S")
     )
     out.mkdir(parents=True, exist_ok=True)
-    (out / "run.json").write_text(
+    (out / f"run-{time.strftime('%Y%m%d-%H%M%S')}.json").write_text(
         json.dumps(
             {
                 "model": args.model,

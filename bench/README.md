@@ -28,7 +28,7 @@ git worktree add --detach ../hypruse-upstream upstream/main
 
 ## What a trial records
 
-One line per trial in `results.ndjson`:
+One line per trial in `results.ndjson` (each invocation also writes `run-<time>.json` with the model, arms and commits, so several runs can share a directory):
 
 - `passed`, `detail`: the task's check, which reads the end state (window list, a fixture's output file, the filesystem, the shell's state). The agent never sees it and its own report doesn't count.
 - `shortcuts`: Bash commands that match the task's ruled-out patterns, such as `mkdir` when the task said to use the Files app. The report's `pass` column counts only clean passes, and `check ok` counts every passing check.
