@@ -171,13 +171,49 @@ done
 exec "$(real loginctl)" "$@"
 EOF
 
+  # `uwsm app` and `uwsm-app` hand the launch to the session's app daemon
+  # (a pipe in the shared XDG_RUNTIME_DIR), which starts it from the user's
+  # systemd manager with the host's display: SUPER+RETURN in a desk opened
+  # a terminal on the user's own screen, ten times in one bench run. In a
+  # desk they run the command here instead, which is what they'd do anyway
+  # minus the systemd scope.
+  cat >>"$dir/_guard" <<'EOF'
+run_here() {
+  local terminal=0
+  while (( $# )); do
+    case $1 in
+      --) shift; break ;;
+      -T) terminal=1; shift ;;
+      -[stauSd]) shift 2 ;;
+      -*) shift ;;
+      *) break ;;
+    esac
+  done
+  (( $# )) || exit 0
+  if [[ $1 == *.desktop ]]; then
+    exec gtk-launch "${1%.desktop}" "${@:2}"
+  elif (( terminal )); then
+    exec xdg-terminal-exec "$@"
+  else
+    exec "$@"
+  fi
+}
+EOF
+
   cat >"$dir/uwsm" <<'EOF'
 #!/bin/bash
 . "$(dirname "$0")/_guard"
-if [[ ${1:-} == "stop" ]]; then
-  exec hyprctl dispatch 'hl.dsp.exit()'
-fi
+case ${1:-} in
+  stop) exec hyprctl dispatch 'hl.dsp.exit()' ;;
+  app) shift; run_here "$@" ;;
+esac
 exec "$(real uwsm)" "$@"
+EOF
+
+  cat >"$dir/uwsm-app" <<'EOF'
+#!/bin/bash
+. "$(dirname "$0")/_guard"
+run_here "$@"
 EOF
 
   cat >"$dir/1password" <<'EOF'

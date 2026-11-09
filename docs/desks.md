@@ -108,6 +108,18 @@ Every desk stop put a "Process crashed: xdg-desktop-portal-hyprland" toast on th
 
 `stop` now ends the desk's processes before its compositor: every one carries the desk's private bus address or, for services the bus activates, the desk's Hyprland signature, and nothing on the host has either. One `grep -lzxF` over `/proc/*/environ` finds them (a per-process loop took 55 s), TERM goes first, KILL catches stragglers after the compositor exits. A stop now takes about 2.5 s, with no core dump and nothing left.
 
+### Scrolling doesn't reach apps in a desk (open)
+
+`hypruse pointer scroll` reports success, but no app in a desk scrolls. A GTK 4 window with a scroll controller logged the pointer's `enter` and not one scroll event, for whole-notch (`axis_discrete`) and fractional (`axis`) scrolls alike, in an Omarchy desk and in a bare one. Clicks from the same virtual pointer arrive fine. Not yet known whether this is the nested compositor or how Hyprland 0.57 handles a virtual pointer's axis events; nothing has tested scrolling on a real session since the fork began. Until then, lists in a desk have to be moved with the keyboard (End, arrows, Page Down).
+
+### Drag and drop drops the previous drag (open)
+
+In a fresh desk, the first `pointer drag` of a file onto a folder in Nautilus drops nothing, and every drag after that drops the file from the drag before it: dragging notes.txt to empty space and then draft.md onto Archive put notes.txt in Archive. That looked like "the second drag works" for a while, because both drags were of the same file. A slower drag (press hold, more steps, a hover before release) changed nothing. Whether Hyprland or Nautilus holds on to the old offer is still open; the bench's `drag-file` task is parked until it's known.
+
+### A desk now and then starts with no output
+
+About once in a few dozen starts the nested output fails to get its first buffers (`GBM: Failed to allocate a GBM buffer: bo null` in the desk's log). The desk is left with Hyprland's 0x0 `FALLBACK` monitor, no window on the host and no shell. The next start is fine. `start` now checks for a real output and fails clearly, and the bench retries once.
+
 ### mise reinstalls tools inside a desk
 
 mise keeps installs under `XDG_DATA_HOME`, and the desk's points at the scratch home, so the first `claude` run in a desk downloaded Claude Code again (3 s plus the network). The bench sets `MISE_DATA_DIR` back to the user's. The desk itself doesn't yet, so any mise-managed tool an app in the desk runs is fetched again on a fresh desk.
@@ -140,6 +152,7 @@ The desk loads Omarchy's Hyprland config from a scratch home and starts only the
 | System menu Logout | `omarchy-system logout` runs `uwsm stop`, which ends your real session | PATH guard: `uwsm stop` exits the desk instead |
 | System menu Suspend/Reboot/Shutdown | `systemctl suspend`/`reboot`/`poweroff` on the real machine | PATH guards refuse power verbs in `systemctl`, `loginctl`, `shutdown`, `reboot`, `poweroff`, `halt`, and post a notification inside the desk |
 | Anything run as root | A desk's theme switch rewrote `/etc/brave/policies/managed/color.json` and `/etc/chromium/...` through `omarchy-theme-set-browser-policy`'s passwordless sudo rule, so the user's real browser turned Vantablack black | PATH guards refuse `sudo`, `pkexec`, `run0`, `su`, `doas` |
+| `uwsm-app` / `uwsm app` launches | Omarchy's launchers (SUPER+RETURN and 43 others) hand the command to the session's app daemon through a pipe in the shared `XDG_RUNTIME_DIR`; it starts in the user's systemd manager with the host's display, so a desk's SUPER+RETURN opened a terminal on the user's screen (10 times in one bench run) | PATH guards for `uwsm-app` and `uwsm app` run the command inside the desk instead (desktop IDs through `gtk-launch`, `-T` through `xdg-terminal-exec`) |
 | Herdr theme sync | `omarchy-theme-set-herdr-machines` pushes the theme to the user's other machines over ssh when the `herdr-theme-sync` toggle is on | Seeding drops that toggle from the scratch state |
 
 The scratch home is seeded with `~/.config/omarchy`, `~/.config/hypr`, terminal and GTK configs, the bash dotfiles, and `~/.local/state/omarchy` minus `clipboard-history.json` and `clipboard-images` (211 MB of your clipboard; private and not needed). `~/.local/share/fonts` is symlinked. mise's state dir is copied too: its trust list lives there, and without it every shell in the desk warned that `~/.config/mise/config.toml` wasn't trusted.
@@ -166,4 +179,3 @@ What a desk doesn't isolate: hardware and system services. Audio (PipeWire), net
 - `omarchy-theme-set-browser` picks the browsers to refresh from the machine's whole process list, then runs `brave-origin --refresh-platform-policy --no-startup-window` in its own session, even when the policy write failed. In a desk that starts a second Brave on the desk's fresh profile, and `--no-startup-window` doesn't stop its first-run window. Omarchy-side fix: only refresh browsers in the caller's session, and skip the refresh when the policy didn't change.
 - Theme switches also signal host apps (`killall -SIGUSR1 kitty`, `pkill -USR1 helix`, btop, ghostty, opencode, hunk, tmux). They reload their own, unchanged config, so it's harmless, but it's another machine-wide reach.
 - `omarchy-theme-set-keyboard` sets real keyboard backlight colors through `asusctl` on ASUS ROG machines. Not installed here, so untested.
-- `uwsm app` passes through to the real uwsm, which launches into the user's systemd session. Untested what env those apps get.
