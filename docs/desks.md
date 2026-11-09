@@ -92,6 +92,20 @@ Named workspaces have no number. Omarchy's reconcile only touches `id > 0` (`reg
 
 Background typing into the hidden agent terminal (`keyboard type ... --window ADDR`, delivered with `sendshortcut`) worked. A `--window` capture of it showed an empty terminal with no prompt, because foot stops drawing while hidden, so the capture was its last frame from before. Bringing the workspace forward showed the typed text. A hidden capture isn't proof that an action landed; in a desk, look at the window in the foreground instead.
 
+### A desk's workspace 1 was workspace 41 (fixed)
+
+Seeding copied the host's `~/.local/state/omarchy/monitors/`, where Omarchy records which block of ten each physical monitor owns. The host's monitors already held four blocks, so the desk's one output (`WAYLAND-1`) got the fifth: windows opened on 41, and a window an agent moved to "workspace 3" left the desk's block. Seeding now skips `monitors/`, so the desk's output gets 1-10 like a fresh install.
+
+### Accessibility didn't work in a desk (fixed)
+
+`hypruse ui` on any desk window failed with `Could not activate remote peer 'org.a11y.atspi.Registry': unit failed`, so `click_ui`, `ui` and `marks` were all dead in a desk. The desk's private session bus is a plain `dbus-daemon`, but the accessibility bus that `at-spi-bus-launcher` starts for it is a `dbus-broker`, and dbus-broker starts the services it activates through the user's systemd manager, in the host session's environment. Activating the registry that way failed, with nothing in the journal.
+
+Running `/usr/lib/at-spi2-registryd` from the desk's environment with `AT_SPI_BUS_ADDRESS` set to the desk's a11y bus (`busctl --user call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress`) fixed it: the form fixture listed its two text boxes, checkbox, radios and button, and Nautilus listed its toolbar. The desk now writes `hypruse-desk-a11y` into its guard directory and runs it at `hyprland.start`. Apps register when they start, so an app started before the registry is up has no tree until it's restarted; `bench/run.py` waits for the registry before a task's setup.
+
+### mise reinstalls tools inside a desk
+
+mise keeps installs under `XDG_DATA_HOME`, and the desk's points at the scratch home, so the first `claude` run in a desk downloaded Claude Code again (3 s plus the network). The bench sets `MISE_DATA_DIR` back to the user's. The desk itself doesn't yet, so any mise-managed tool an app in the desk runs is fetched again on a fresh desk.
+
 ### Driving Omarchy's shell
 
 - Menus and bar panels are full-screen overlay layers that take the keyboard grab: `omarchy-menu`, `omarchy-image-selector` (the theme carousel), and `omarchy-keyboard-panel` (the Audio panel and friends). hypruse's note that a launcher layer "covers this point" or "holds the keyboard grab" is accurate while one is open.
