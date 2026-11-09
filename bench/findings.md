@@ -2,6 +2,32 @@
 
 What the bench has shown so far, newest first. Raw results live in `bench/results/` (not committed); this file keeps the conclusions and the numbers behind them.
 
+## 2026-11-08: harder tasks
+
+Sonnet 5.5, 4 tasks × 3 arms × 3 repeats, three desks at a time. Fork at 1d35d9d (with the `use_bind` fix), upstream at 6c28114. Shortcut patterns were corrected afterwards and rescored with `run.py --rescore`; pass/fail is the checks' own.
+
+| Task | bash | upstream | fork |
+|---|---|---|---|
+| `beside-human` (a person typing beside the agent, background mode) | 2/3, 57 s | 3/3, 26 s | 3/3, 25 s |
+| `wizard` (dropdown, long list, slider, spin button) | 1/3, 217 s | 3/3, 53 s | 3/3, 55 s |
+| `hotkey-workspace` (Omarchy hotkeys only) | 1/3, 153 s | 0/3, 10 s | 3/3, 18 s |
+| `background-picker` (the Omarchy menu) | 3/3, 74 s | 3/3, 39 s | 3/3, 31 s |
+| All | 7/12, $0.110 | 9/12, $0.106 | 12/12, $0.093 |
+
+Times are medians; cost is the median per trial. The run cost $4.12 at list price.
+
+- **The fork's fixes decide the hotkey task.** Upstream failed all three the same way: `use_bind SUPER+code:13` errored on the Lua bind, `keyboard key super+4` went out through wtype's throwaway keymap and never reached the bind, and the agent gave up in about 10 s, honestly. The fork pressed the binds with real keycodes and passed every time in about 18 s.
+- **The Omarchy menu got faster with `use_bind` working**: fork median 31 s and 15 turns against upstream's 39 s and 21.
+- **Background mode works beside a person.** Both hypruse arms filled the form every time without moving the person's focus or losing a keystroke, even though `click_ui` can't press GTK 4's checkboxes in the background; agents fell back to Tab and Space sent to the window. Bash passed 2 of 3 by writing its own AT-SPI scripts plus `send_shortcut` dispatches, and gave up on the third.
+- **Bash can't drive hard GTK controls.** On the wizard it took 45-480 s and up to 111 tool calls, passing once; one run pressed Finish with every value wrong.
+- **Agents peek.** Two bash runs read the fixture's output file to check their work, one after finding the bench's state directory in another process's `/proc/*/environ`. Reading isn't scored as a shortcut; writing would be.
+
+### Found and fixed along the way
+
+- **Desks leaked app launches to the host.** Omarchy's launchers go through `uwsm-app`, which hands the command to the session's app daemon; it opened about ten terminals on the host's screen during this run whenever an agent pressed SUPER+RETURN. Fixed (e878438): desks run `uwsm-app` and `uwsm app` launches inside the desk. The `host leak` column of this run is those terminals, attributed to whichever trials were running at the time.
+- **Scrolling doesn't reach apps in a desk**, and **drag and drop drops the previous drag's file**. Both open; see `docs/desks.md`. The wizard is still doable with the keyboard; `drag-file` is parked.
+- `binds` lists Omarchy's number-row binds as `SUPER+code:13`, so `use_bind SUPER+4` fails with "no keybind". Agents recovered by reading `binds`, but accepting the key's name would save a turn.
+
 ## 2026-11-08: first runs
 
 Sonnet 5.5 (`claude-sonnet-5-5`), 5 tasks × 3 arms × 2 repeats, three desks at a time, plus a `fork-image` variant on 3 tasks × 2. hypruse source: fork at 30b5446, upstream at 6c28114. Desks had the workspace-block and accessibility-registry fixes.

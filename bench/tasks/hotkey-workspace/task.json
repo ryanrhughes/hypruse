@@ -1,5 +1,11 @@
 {
   "summary": "Omarchy hotkeys: switch workspace and open a terminal with the keyboard alone",
   "prompt": "Using Omarchy's keyboard shortcuts, switch to workspace 4 and open a new terminal there. Use the hotkeys; don't run commands or IPC calls that do it for you.",
-  "shortcuts": ["^hypr ", "^launch ", "^Bash .*(dispatch|hl\\.dsp|omarchy-launch|uwsm|xdg-terminal-exec|setsid)"]
+  "shortcuts": [
+    "^hypr ",
+    "^launch ",
+    "^Bash .*hyprctl\\s+(dispatch|eval)\\b",
+    "^Bash .*\\buwsm(-app|\\s+app)\\s",
+    "^Bash .*\\b(omarchy-launch-terminal|xdg-terminal-exec)\\b(?!\\s*(--version|\\||;?\\s*$))"
+  ]
 }

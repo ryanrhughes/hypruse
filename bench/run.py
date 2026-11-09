@@ -577,6 +577,27 @@ def trial(
     return record
 
 
+def rescore(out: Path) -> None:
+    """Recompute every trial's shortcuts from its stored agent stream, for
+    when a task's patterns were wrong. Pass/fail is the check's and stays."""
+    path = out / "results.ndjson"
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    tasks = {p.name: Task(p) for p in (BENCH / "tasks").iterdir() if (p / "task.json").exists()}
+    changed = 0
+    for row in rows:
+        stream = out / "trials" / row["trial"] / "agent.ndjson"
+        if "infra_error" in row or not stream.exists() or row["task"] not in tasks:
+            continue
+        shortcuts = parse_stream(stream, tasks[row["task"]])["shortcuts"]
+        if shortcuts != row.get("shortcuts"):
+            changed += 1
+            before = len(row.get("shortcuts") or [])
+            print(f"{row['trial']}: {before} -> {len(shortcuts)} shortcut(s)")
+            row["shortcuts"] = shortcuts
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    print(f"{changed} trial(s) rescored in {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -590,7 +611,15 @@ def main() -> None:
     )
     parser.add_argument("--out", help="results directory (default bench/results/<timestamp>)")
     parser.add_argument("--keep-logs", action="store_true", help="keep each desk's Hyprland log")
+    parser.add_argument(
+        "--rescore",
+        metavar="DIR",
+        help="re-read each trial in DIR against the tasks' current shortcut patterns, then exit",
+    )
     args = parser.parse_args()
+    if args.rescore:
+        rescore(Path(args.rescore))
+        return
 
     host = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
     if not host:
