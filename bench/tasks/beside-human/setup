@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+: >"$BENCH_STATE/human.txt"
+: >"$BENCH_STATE/typed.txt"
+launch foot --title human-notes sh -c 'exec cat >>"$BENCH_STATE/human.txt"'
+wait_window human-notes
+launch python3 "$BENCH_FIXTURES/form.py"
+wait_window "Bench Form"
+focus_title human-notes
+sleep 0.3
+launch "$(dirname "$BENCH_HYPRUSE")/python" "$BENCH_FIXTURES/human.py"
+# typing has started before the agent does
+for (( i = 0; i < 40; i++ )); do
+  [[ -s $BENCH_STATE/human.pid ]] && break
+  sleep 0.1
+done
+sleep 2

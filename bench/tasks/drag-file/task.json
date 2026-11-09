@@ -1,0 +1,10 @@
+{
+  "summary": "Pointer drag in a real app: drag a file onto a folder in Nautilus",
+  "prompt": "In the Files window, move \"draft.md\" into the \"Archive\" folder by dragging it with the mouse.",
+  "shortcuts": [
+    "^Bash .*\\b(mv|gio)\\b",
+    "ctrl\\+x",
+    "ctrl\\+v"
+  ],
+  "disabled": "In a desk, each drag drops the PREVIOUS drag's file (a warm-up drag of notes.txt, then a drag of draft.md, put notes.txt in Archive), and the first drag drops nothing. Not yet known whether Hyprland or Nautilus holds on to the old offer. Runs only when named."
+}

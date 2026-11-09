@@ -1,0 +1,32 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+pid=$(<"$BENCH_STATE/human.pid")
+kill -TERM "$pid" 2>/dev/null
+# they finish the line they're on (up to about 8 s)
+for (( i = 0; i < 120; i++ )); do
+  kill -0 "$pid" 2>/dev/null || break
+  sleep 0.1
+done
+sleep 0.3
+
+problems=()
+want='{"name":"Grace Hopper","email":"grace@example.com","subscribe":true,"plan":"Team"}'
+if [[ ! -f $BENCH_STATE/form.json ]]; then
+  problems+=("form never submitted")
+elif [[ $(jq -c '.[-1] | del(.at)' "$BENCH_STATE/form.json") != "$want" ]]; then
+  problems+=("form: $(jq -c '.[-1] | del(.at)' "$BENCH_STATE/form.json")")
+fi
+typed=$(wc -l <"$BENCH_STATE/typed.txt")
+if ! cmp -s "$BENCH_STATE/typed.txt" "$BENCH_STATE/human.txt"; then
+  problems+=("the person's text was disturbed ($typed lines typed, $(wc -l <"$BENCH_STATE/human.txt") arrived intact or not)")
+fi
+focused=$(hyprctl activewindow -j | jq -r '.title // ""')
+if [[ $focused != "human-notes" ]]; then
+  problems+=("focus moved to '$focused'")
+fi
+
+if (( ${#problems[@]} == 0 )); then
+  verdict pass "form right, $typed lines of the person's typing intact, focus kept"
+else
+  verdict fail "$(IFS='; '; echo "${problems[*]}")"
+fi

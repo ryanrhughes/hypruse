@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+mkdir -p "$HOME/Documents/Archive"
+printf 'notes\n' >"$HOME/Documents/notes.txt"
+printf 'draft\n' >"$HOME/Documents/draft.md"
+printf 'todo\n' >"$HOME/Documents/todo.txt"
+launch nautilus --new-window "$HOME/Documents"
+wait_window --class org.gnome.Nautilus
+sleep 1

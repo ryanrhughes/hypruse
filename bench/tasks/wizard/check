@@ -1,0 +1,14 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+file=$BENCH_STATE/wizard.json
+if [[ ! -f $file ]]; then
+  verdict fail "never finished"
+  exit
+fi
+got=$(jq -c . "$file")
+want='{"region":"Oceania","timezone":"Pacific/Auckland","volume":70,"copies":3}'
+if [[ $got == "$want" ]]; then
+  verdict pass "all four values right"
+else
+  verdict fail "$got"
+fi

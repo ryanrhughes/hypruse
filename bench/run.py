@@ -100,6 +100,8 @@ class Task:
         self.summary = spec.get("summary", "")
         self.shortcuts = [re.compile(p) for p in spec.get("shortcuts", [])]
         self.timeout = spec.get("timeout", 480)
+        # Settings for the hypruse server in the MCP arms, e.g. background mode.
+        self.server_env = spec.get("server_env", {})
 
 
 def load_tasks(names: list[str]) -> list[Task]:
@@ -107,7 +109,12 @@ def load_tasks(names: list[str]) -> list[Task]:
         p.name: p for p in sorted((BENCH / "tasks").iterdir()) if (p / "task.json").exists()
     }
     if not names:
-        return [Task(p) for p in available.values()]
+        # a task marked "disabled" (with the reason) runs only when named
+        return [
+            Task(p)
+            for p in available.values()
+            if "disabled" not in json.loads((p / "task.json").read_text())
+        ]
     missing = [n for n in names if n not in available]
     if missing:
         sys.exit(f"unknown task(s): {', '.join(missing)}; have {', '.join(available)}")
@@ -136,13 +143,19 @@ class Desk:
     def start(self) -> None:
         # The desk script finds its new compositor by diffing the instance
         # list, so two starts at once could each claim the other's.
-        with _desk_start_lock:
-            subprocess.run(
-                [str(DESK), "start", self.name, "--fresh"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+        # One retry: a nested output now and then fails to get its first
+        # buffers, and the desk script says so instead of starting blind.
+        for attempt in (0, 1):
+            with _desk_start_lock:
+                started = subprocess.run(
+                    [str(DESK), "start", self.name, "--fresh"],
+                    capture_output=True,
+                    text=True,
+                )
+            if started.returncode == 0:
+                break
+            if attempt:
+                started.check_returncode()
         self.display = {
             k: v
             for k, v in read_kv(self.run / "env").items()
@@ -331,7 +344,7 @@ def credentials() -> dict[str, str]:
     return env
 
 
-def mcp_config(arm: str, desk: Desk, trial_dir: Path) -> Path | None:
+def mcp_config(arm: str, task: Task, desk: Desk, trial_dir: Path) -> Path | None:
     if arm == "bash":
         return None
     server = SERVERS[arm]
@@ -339,6 +352,7 @@ def mcp_config(arm: str, desk: Desk, trial_dir: Path) -> Path | None:
         sys.exit(f"{arm}: no hypruse at {server}")
     env = dict(desk.display)
     env["HYPRUSE_JOURNAL"] = str(trial_dir / "journal.ndjson")
+    env.update(task.server_env)
     env.update(ARM_ENV.get(arm, {}))
     config = {
         "mcpServers": {"hypruse": {"type": "stdio", "command": str(server), "args": [], "env": env}}
@@ -364,7 +378,7 @@ def run_agent(
         "--dangerously-skip-permissions",
         "--strict-mcp-config",
     ]
-    config = mcp_config(arm, desk, trial_dir)
+    config = mcp_config(arm, task, desk, trial_dir)
     if config:
         # The flag takes several values, so a prompt after it would be
         # read as one more config file; the prompt goes in on stdin.
@@ -409,7 +423,7 @@ def short_tool(name: str) -> str:
 def parse_stream(path: Path, task: Task) -> dict:
     tools: collections.Counter[str] = collections.Counter()
     images = 0
-    bash: list[str] = []
+    calls: list[str] = []
     result: dict = {}
     final = ""
     for line in path.read_text(errors="replace").splitlines():
@@ -422,8 +436,10 @@ def parse_stream(path: Path, task: Task) -> dict:
             for block in obj.get("message", {}).get("content", []):
                 if block.get("type") == "tool_use":
                     tools[short_tool(block["name"])] += 1
-                    if block["name"] == "Bash":
-                        bash.append(block.get("input", {}).get("command", ""))
+                    # "Bash {...}", "hypr {...}": a task's shortcut patterns
+                    # can rule out a shell command or a tool call alike
+                    args = json.dumps(block.get("input", {}))
+                    calls.append(f"{short_tool(block['name'])} {args}")
                 elif block.get("type") == "text":
                     final = block.get("text", "")
         elif kind == "user":
@@ -434,7 +450,7 @@ def parse_stream(path: Path, task: Task) -> dict:
         elif kind == "result":
             result = obj
     usage = result.get("usage", {})
-    shortcuts = [cmd for cmd in bash if any(p.search(cmd) for p in task.shortcuts)]
+    shortcuts = [call for call in calls if any(p.search(call) for p in task.shortcuts)]
     return {
         "turns": result.get("num_turns"),
         "agent_ms": result.get("duration_ms"),
@@ -503,7 +519,12 @@ def trial(
     }
     try:
         desk.start()
-        task_env = dict(desk.env, BENCH_STATE=str(state), BENCH_FIXTURES=str(BENCH / "fixtures"))
+        task_env = dict(
+            desk.env,
+            BENCH_STATE=str(state),
+            BENCH_FIXTURES=str(BENCH / "fixtures"),
+            BENCH_HYPRUSE=str(SERVERS["fork"]),
+        )
         subprocess.run(
             [str(task.dir / "setup")],
             env=task_env,

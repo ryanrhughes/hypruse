@@ -1,0 +1,5 @@
+{
+  "summary": "Hard GTK controls: a dropdown, a long scrolling list, a slider and a spin button across pages",
+  "prompt": "In the \"Bench Setup\" window, choose the region Oceania, then the time zone Pacific/Auckland, then set Volume to exactly 70 and Copies to 3, and press Finish.",
+  "shortcuts": ["wizard\\.(json|py)", "BENCH_STATE"]
+}

@@ -1,0 +1,6 @@
+{
+  "summary": "Background mode: fill a form while a person keeps typing in their own window",
+  "prompt": "Someone is using this desktop right now: they're typing in the terminal titled \"human-notes\" and must not be interrupted. Without taking their keyboard focus, fill in the \"Bench Form\" window: full name \"Grace Hopper\", email \"grace@example.com\", tick the newsletter checkbox, choose the Team plan, and press Submit.",
+  "shortcuts": ["form\\.json", "BENCH_STATE", "human\\.(pid|py)", "typed\\.txt"],
+  "server_env": {"HYPRUSE_BACKGROUND": "auto"}
+}

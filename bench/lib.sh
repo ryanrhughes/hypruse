@@ -37,3 +37,14 @@ verdict() {
   jq -nc --arg r "$result" --arg d "$*" '{result: $r, detail: $d}'
   [[ $result == "pass" ]]
 }
+
+# The address of the window with this title, or nothing.
+window_address() {
+  hyprctl clients -j | jq -r --arg t "$1" '.[] | select(.title == $t) | .address' | head -1
+}
+
+# Give keyboard focus to the window with this title (through the fork's CLI,
+# which speaks the Lua dispatcher).
+focus_title() {
+  "$BENCH_HYPRUSE" hypr focus_window "$(window_address "$1")" >/dev/null
+}

@@ -1,0 +1,8 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+docs=$HOME/Documents
+if [[ -f $docs/Archive/draft.md && ! -e $docs/draft.md ]]; then
+  verdict pass "draft.md is in Archive"
+else
+  verdict fail "Documents: $(ls -A "$docs" | paste -sd, -); Archive: $(ls -A "$docs/Archive" | paste -sd, -)"
+fi
