@@ -52,8 +52,9 @@ after typing or toggling: the focused window, or for `click_ui` the
 window it just clicked), or `then='screenshot'` to
 the acting call itself instead of calling `desktop` again. `binds` lists
 the owner's own keybinds; to run one, call
-`use_bind` with its combo (synthetic keypresses do NOT trigger compositor
-binds, so `keyboard` is only for shortcuts the focused app handles). After
+`use_bind` with its combo (it runs every bind, a Lua config's included,
+and checks the combo is bound first; use `keyboard` for shortcuts the
+focused app handles). After
 actions with delayed effects, block on `wait_for` (window_open,
 title_change, layer_open) instead of sleeping. To run several actions at
 once (click, type, press enter, wait), pass them to `sequence` as one
@@ -1922,12 +1923,9 @@ def binds() -> list[dict[str, Any]]:
     """The user's own Hyprland keybinds: combo, action, arg, and a
     description when the config provides one. This is how the desktop's
     owner drives it: to perform one of these workflows, call `use_bind`
-    with the combo (it runs the bound action). An action of `lua` means the
-    bind is a closure in a Lua Hyprland config, which nothing can run from
-    outside: read its description and do the same thing with `hypr` or
-    `launch`. NOTE: the `keyboard` tool canNOT trigger these compositor
-    binds (synthetic keys reach apps, not Hyprland's bind matcher), so do
-    not try to press them."""
+    with the combo. An action of `lua` means the bind is a closure in a Lua
+    Hyprland config (`kind` names its dispatcher when Hyprland reports one,
+    e.g. exec_cmd); `use_bind` runs those by pressing their keys."""
     return hyprctl.binds()
 
 
@@ -1988,10 +1986,11 @@ def clipboard(action: str, text: str = "") -> str:
 @journal.journaled("act")
 def use_bind(combo: str, then: str = "none") -> list[Any] | str:
     """Run one of the user's own Hyprland keybinds by its combo (from the
-    `binds` tool), e.g. 'SUPER+F'. This executes the bound action directly
-    (the only reliable way: synthetic keypresses do not trigger compositor
-    binds). Use it to drive the owner's configured workflows: launchers,
-    layout shortcuts, scratchpads. `then` ('desktop'|'screenshot'|'ui'|'none')
+    `binds` tool), e.g. 'SUPER+F'. A bind with a named dispatcher is
+    executed directly; a Lua config's bind (action `lua`) is run by pressing
+    its keys with the layout's real keycodes, which Hyprland matches like a
+    person's. Use it to drive the owner's configured workflows: launchers,
+    menus, layout shortcuts, scratchpads. `then` ('desktop'|'screenshot'|'ui'|'none')
     appends the result to this call (handy after a launcher bind). Refused
     while HYPRUSE_CONFINE is set or the background guarantee is on
     (HYPRUSE_BACKGROUND=1): a bind runs an arbitrary compositor action
@@ -2002,18 +2001,24 @@ def use_bind(combo: str, then: str = "none") -> list[Any] | str:
     bind = hyprctl.find_bind(combo)
     if bind is None:
         raise ValueError(f"no keybind {combo!r}; call binds() for the exact combos")
-    # Refused before the dry run, not after: a rehearsal that reported a
-    # plan for this would be describing something that can never happen.
     if bind["action"] == hyprctl.LUA_BIND:
-        described = f" It is described as {bind['description']!r}." if bind.get(
-            "description"
-        ) else ""
-        raise ValueError(
-            f"{bind['combo']} is bound in a Lua Hyprland config, where a bind is an "
-            "anonymous closure the compositor exposes no way to call. No tool can run "
-            f"it and retrying will not help.{described} Do the action directly instead: "
-            "`hypr` for window and workspace ops, `launch` for apps."
-        )
+        # A closure IPC can't call; its keys are the one way in.
+        if journal.dry_run():
+            return _acted(f"{_DRY} press {bind['combo']} (a Lua bind)", then)
+        try:
+            hinput.press_bind(bind["combo"])
+        except ValueError as exc:
+            described = f" It is described as {bind['description']!r}." if bind.get(
+                "description"
+            ) else ""
+            raise ValueError(
+                f"{bind['combo']} is bound in a Lua Hyprland config, which IPC can't call, "
+                f"and pressing its keys failed: {exc}. Retrying will not help.{described} "
+                "Do the action directly instead: `hypr` for window and workspace ops, "
+                "`launch` for apps."
+            ) from exc
+        trust.remember_seat()
+        return _acted(f"pressed {bind['combo']} (a Lua bind)", then)
     action, arg = bind["action"], bind.get("arg", "")
     if journal.dry_run():
         return _acted(f"{_DRY} run {bind['combo']}: {action} {arg}".rstrip(), then)

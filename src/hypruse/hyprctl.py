@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -674,14 +675,26 @@ def modmask_to_names(mask: int) -> list[str]:
     return [name for bit, name in _MOD_BITS if mask & bit]
 
 
-# A Lua config binds a closure rather than a named dispatcher, and Hyprland
-# reports every one of them as the pseudo-dispatcher `__lua` with a Lua
-# registry index for an argument. That index means nothing outside the
-# compositor and there is no IPC route that calls the closure, so parse_binds
-# reports the fact instead of the number: the combo and the description still
-# say what the owner's workflow IS, which is most of what `binds` is for.
+# A Lua config binds a closure or an `hl.dsp.*` dispatcher object rather than
+# a named dispatcher string. Hyprland has reported those three ways: the
+# pseudo-dispatcher `__lua`, `HL.Dispatcher(exec_cmd)` (the dispatcher's
+# kind, with none of its arguments), or `function: 0x...` for a bare closure,
+# each with an internal index for an argument. None of that can be sent back
+# over IPC, so parse_binds reports the fact instead of the number: the combo
+# and the description still say what the owner's workflow IS, and use_bind
+# runs one by pressing its keys.
 _LUA_HANDLER = "__lua"
 LUA_BIND = "lua"
+_LUA_DISPATCHER = re.compile(r"HL\.Dispatcher\((\w+)\)")
+
+
+def _lua_bind_kind(action: str) -> str | None:
+    """None when `action` is a dispatcher IPC can run; otherwise the Lua
+    dispatcher's kind when Hyprland names one ("exec_cmd"), or ""."""
+    if action == _LUA_HANDLER or action.startswith("function:"):
+        return ""
+    m = _LUA_DISPATCHER.fullmatch(action)
+    return m.group(1) if m else None
 
 # A bind on a device that is not the keyboard. `mouse` is the hyprlang
 # manager's own flag and a Lua config never sets it, so the key name has to
@@ -710,8 +723,11 @@ def parse_binds(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
         combo = "+".join([*modmask_to_names(int(b.get("modmask", 0))), key])
         action = b.get("dispatcher", "")
         entry: dict[str, Any] = {"combo": combo}
-        if action == _LUA_HANDLER:
+        kind = _lua_bind_kind(action)
+        if kind is not None:
             entry["action"] = LUA_BIND
+            if kind:
+                entry["kind"] = kind
         else:
             entry["action"] = action
             entry["arg"] = b.get("arg", "")

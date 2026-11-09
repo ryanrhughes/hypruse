@@ -257,9 +257,9 @@ SUPER+F  lua  "scratchpad"
 Exit codes: 0, 1.
 
 Notes: this is how the owner drives the desktop; run one with `use_bind`.
-An action of `lua` is a closure in a Lua Hyprland config that nothing can
-run from outside: read its description and do the same thing with `hypr` or
-`launch`. `keyboard key super+...` never triggers these binds.
+An action of `lua` is a closure in a Lua Hyprland config (`kind` names its
+dispatcher when Hyprland reports one); `use_bind` runs it by pressing its
+keys.
 
 ## wait_for
 
@@ -582,16 +582,17 @@ Output:
 ran SUPER+SPACE: exec wofi --show drun
 ```
 
-Exit codes: 0; 1 (no such bind, or a `lua` bind, with the explanation); 3
+Exit codes: 0; 1 (no such bind, or a `lua` bind whose keys the layout lacks, with the explanation); 3
 (refused outright while HYPRUSE_CONFINE or HYPRUSE_BACKGROUND=1 is set,
 because a bind runs an arbitrary compositor action that cannot be scoped to
 a window).
 
-Notes: the only reliable way to run the owner's launchers, scratchpads and
-layout shortcuts, because synthetic keypresses never reach Hyprland's bind
-matcher. After a launcher bind, `wait_for layer_open --match <namespace>`,
-then drive the launcher with `keyboard` and no `--window`. A `lua` bind cannot
-be run by anything: do the action with `hypr` or `launch`.
+Notes: the way to run the owner's launchers, menus, scratchpads and layout
+shortcuts. A bind with a named dispatcher is dispatched over IPC; a `lua` bind
+(a closure in a Lua config, which IPC can't call) is run by pressing its keys
+with the layout's real keycodes. After a launcher bind, `wait_for layer_open
+--match <namespace>`, then drive the launcher with `keyboard` and no
+`--window`.
 
 ## sequence
 

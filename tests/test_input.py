@@ -131,6 +131,32 @@ def test_key_combo_presses_real_keycodes_on_the_real_layout(monkeypatch):
     assert pressed == [[125, 37], [29, 42, 20]]
 
 
+def test_press_bind_reads_combos_the_way_hyprland_writes_them(monkeypatch):
+    import ctypes.util
+
+    import pytest
+
+    if ctypes.util.find_library("xkbcommon") is None:
+        pytest.skip("libxkbcommon not installed")
+    from hypruse import input as hinput
+
+    monkeypatch.setattr(hinput.hyprctl, "active_layout", lambda: ("us", "", ""))
+    pressed = []
+
+    class Keyboard:
+        def press_codes(self, keymap, codes):
+            pressed.append(codes)
+
+    monkeypatch.setattr(hinput, "_with_keyboard", lambda fn: fn(Keyboard()))
+    # `binds` writes SPACE and COMMA in capitals, and code:N as an XKB keycode
+    hinput.press_bind("SUPER+SPACE")
+    hinput.press_bind("SUPER+COMMA")
+    hinput.press_bind("SUPER+code:10")
+    assert pressed == [[125, 57], [125, 51], [125, 2]]
+    with pytest.raises(ValueError, match="no key"):
+        hinput.press_bind("SUPER+NoSuchKey")
+
+
 def test_key_combo_falls_back_when_the_layout_lacks_the_key(monkeypatch):
     from hypruse import input as hinput
 

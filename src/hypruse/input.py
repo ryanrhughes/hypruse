@@ -166,15 +166,40 @@ def _real_combo(mods: list[str], key: str | None) -> tuple[bytes, list[int]] | N
                 return None
             codes.append(code)
         if key:
-            code = real.code(key)
-            if code is None and len(key) == 1:
-                # "super+K" names the K key, the way Hyprland binds are written
-                code = real.code(key.lower())
+            code = _key_code(real, key)
             if code is None:
                 return None
             codes.append(code)
         return (real.text, codes) if codes else None
     return None
+
+
+def _key_code(real: keymap.RealKeys, key: str) -> int | None:
+    """The evdev code for a combo's key, written the way Hyprland's `binds`
+    writes it: "K" and "COMMA" name the k and comma keys, and "code:10" is
+    an XKB keycode, which runs 8 above evdev's."""
+    if key.startswith("code:") and key[5:].isdigit():
+        return int(key[5:]) - 8
+    code = real.code(key)
+    if code is None and key != key.lower():
+        code = real.code(key.lower())
+    return code
+
+
+def press_bind(combo: str) -> None:
+    """Fire a compositor keybind by pressing its keys on the virtual
+    keyboard, with the layout's real keycodes so Hyprland's bind matcher
+    sees the same keys a person would press. This is how a Lua config's
+    binds run: they are closures IPC can't call. Raises ValueError when the
+    layout has no key for part of the combo; the generated-keymap fallbacks
+    in key_combo would not match a bind reliably, so none is tried."""
+    journal.refuse_if_dry("press_bind")
+    mods, key = parse_combo(combo)
+    with _seat_lock:
+        real = _real_combo(mods, key)
+        if real is None:
+            raise ValueError(f"the keyboard layout has no key for part of {combo!r}")
+        _with_keyboard(lambda k: k.press_codes(*real))
 
 
 def key_combo(combo: str) -> None:

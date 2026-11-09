@@ -54,7 +54,7 @@ they are visible; screenshot when visibility matters.
 | look at what the tree cannot name (terminal, canvas, Electron/Chrome without the a11y flag) | `hypruse screenshot --window ADDR`, then `hypruse zoom X Y` | coarse to fine |
 | click, drag or scroll at a point | `hypruse pointer click X Y` | last resort, only after zoom |
 | type text, press an app shortcut | `hypruse keyboard type TEXT --window ADDR`, `hypruse keyboard key ctrl+s --window ADDR` | `--window` aims the keys, in the background on any window but the human's |
-| run a compositor keybind (super+...) | `hypruse binds`, then `hypruse use_bind SUPER+F` | synthetic keys never trigger compositor binds |
+| run a compositor keybind (super+...) | `hypruse binds`, then `hypruse use_bind SUPER+F` | checks the combo is bound, then runs it; Lua binds included |
 | wait for something to happen | `hypruse wait_for window_open --match firefox` | instead of sleep |
 | click, type, enter as one process | `hypruse sequence '[...]'` | one round-trip; stops on an unexpected structural change |
 

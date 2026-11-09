@@ -119,24 +119,36 @@ LUA_BINDS = [
 @pytest.fixture
 def fake_lua_binds(monkeypatch):
     monkeypatch.setattr(hyprctl, "binds", lambda: LUA_BINDS)
-    dispatched = []
-    monkeypatch.setattr(hyprctl, "dispatch", lambda *a: dispatched.append(a))
-    return dispatched
+    calls = {"dispatched": [], "pressed": []}
+    monkeypatch.setattr(hyprctl, "dispatch", lambda *a: calls["dispatched"].append(a))
+    monkeypatch.setattr(server.hinput, "press_bind", lambda combo: calls["pressed"].append(combo))
+    return calls
 
 
-def test_use_bind_refuses_a_lua_bind_and_says_why(fake_lua_binds):
+def test_use_bind_runs_a_lua_bind_by_pressing_its_keys(fake_lua_binds):
+    # Omarchy's binds are Lua closures: IPC can't call them, so before this
+    # every agent's first move on an Omarchy menu task (SUPER+SPACE) failed
+    out = server.use_bind("super+f")
+    assert fake_lua_binds["pressed"] == ["SUPER+F"]
+    assert fake_lua_binds["dispatched"] == []
+    assert "pressed SUPER+F" in str(out)
+
+
+def test_use_bind_says_why_when_a_lua_bind_cannot_be_pressed(fake_lua_binds, monkeypatch):
+    def no_key(combo):
+        raise ValueError(f"the keyboard layout has no key for part of {combo!r}")
+
+    monkeypatch.setattr(server.hinput, "press_bind", no_key)
     with pytest.raises(ValueError, match="Lua Hyprland config") as exc:
         server.use_bind("super+f")
     msg = str(exc.value)
-    assert "retrying will not help" in msg  # close the retry loop
+    assert "Retrying will not help" in msg  # close the retry loop
     assert "'open files'" in msg  # what the bind was FOR
     assert "hypr" in msg and "launch" in msg  # somewhere else to go
-    assert fake_lua_binds == []
 
 
-def test_use_bind_refuses_a_lua_bind_before_the_dry_run_plan(fake_lua_binds, monkeypatch):
-    # a rehearsal that reported a plan here would be describing something
-    # that can never happen, on any run
+def test_use_bind_rehearses_a_lua_bind_without_pressing(fake_lua_binds, monkeypatch):
     monkeypatch.setenv("HYPRUSE_DRYRUN", "1")
-    with pytest.raises(ValueError, match="Lua Hyprland config"):
-        server.use_bind("super+g")
+    out = server.use_bind("super+g")
+    assert "press SUPER+G" in str(out)
+    assert fake_lua_binds["pressed"] == []

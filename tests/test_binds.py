@@ -145,3 +145,22 @@ def test_parse_binds_keeps_scroll_binds():
     assert hyprctl.parse_binds(scroll) == [
         {"combo": "SUPER+mouse_down", "action": "workspace", "arg": "e+1"}
     ]
+
+
+def test_parse_binds_marks_the_lua_dispatcher_forms_hyprland_057_reports():
+    # Omarchy's binds, as Hyprland 0.57 lists them: the dispatcher's kind
+    # with an internal index, or a bare closure; neither can be dispatched
+    raw = [
+        {"modmask": 64, "key": "SPACE", "dispatcher": "HL.Dispatcher(global)", "arg": "371",
+         "description": "omacast launcher", "submap": "", "keycode": 0},
+        {"modmask": 4, "key": "SPACE", "dispatcher": "function: 0xb023631e2400", "arg": "114",
+         "submap": "", "keycode": 0},
+        {"modmask": 64, "key": "RETURN", "dispatcher": "exec", "arg": "foot",
+         "submap": "", "keycode": 0},
+    ]
+    assert hyprctl.parse_binds(raw) == [
+        {"combo": "SUPER+SPACE", "action": "lua", "kind": "global",
+         "description": "omacast launcher"},
+        {"combo": "CTRL+SPACE", "action": "lua"},
+        {"combo": "SUPER+RETURN", "action": "exec", "arg": "foot"},
+    ]
