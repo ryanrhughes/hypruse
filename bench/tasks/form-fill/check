@@ -1,0 +1,15 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+file=$BENCH_STATE/form.json
+if [[ ! -f $file ]]; then
+  verdict fail "never submitted"
+  exit
+fi
+count=$(jq length "$file")
+last=$(jq -c '.[-1] | del(.at)' "$file")
+want='{"name":"Ada Lovelace","email":"ada@example.com","subscribe":true,"plan":"Pro"}'
+if [[ $last == "$want" ]]; then
+  verdict pass "submitted $count time(s)"
+else
+  verdict fail "last of $count submission(s): $last"
+fi

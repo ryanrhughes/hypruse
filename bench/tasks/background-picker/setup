@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+omarchy-shell shell selectedBackground >"$BENCH_STATE/background-before"
+[[ -s $BENCH_STATE/background-before ]]

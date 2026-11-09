@@ -1,0 +1,13 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+# Compare image names, not paths: the seeded desk's "before" can point into
+# the host's theme directory and "after" into the desk's copy of it, so the
+# same wallpaper re-applied shows up as a different path.
+before=$(basename "$(<"$BENCH_STATE/background-before")")
+after=$(omarchy-shell shell selectedBackground 2>/dev/null)
+after=${after:+$(basename "$after")}
+if [[ -n $after && $after != "$before" ]]; then
+  verdict pass "$before -> $after"
+else
+  verdict fail "still $before"
+fi

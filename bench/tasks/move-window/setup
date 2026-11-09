@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+launch foot --title bench-other sleep infinity
+wait_window bench-other
+launch foot --title bench-target sleep infinity
+wait_window bench-target

@@ -1,0 +1,5 @@
+{
+  "summary": "Window management: move one window to another workspace",
+  "prompt": "Move the terminal window titled \"bench-target\" to workspace 3. Leave the window titled \"bench-other\" where it is.",
+  "shortcuts": []
+}

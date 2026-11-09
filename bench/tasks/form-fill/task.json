@@ -1,0 +1,5 @@
+{
+  "summary": "Accessible GTK controls: fill and submit a form",
+  "prompt": "In the \"Bench Form\" window, enter the full name \"Ada Lovelace\" and the email \"ada@example.com\", tick the newsletter checkbox, choose the Pro plan, and press Submit.",
+  "shortcuts": ["form\\.json", "BENCH_STATE"]
+}

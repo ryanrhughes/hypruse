@@ -1,0 +1,5 @@
+{
+  "summary": "A real GTK app: make a folder in Nautilus",
+  "prompt": "In the Files window, create a new folder named \"Quarterly Reports\" inside Documents. Do it through the Files app, not the shell.",
+  "shortcuts": ["mkdir", "gio\\s"]
+}

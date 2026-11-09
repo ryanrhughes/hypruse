@@ -1,0 +1,5 @@
+{
+  "summary": "Omarchy's own UI: change the wallpaper through the menu",
+  "prompt": "Change the desktop background to a different wallpaper using Omarchy's background picker, which you can reach from the Omarchy menu. Use the desktop's interface, not shell commands.",
+  "shortcuts": ["omarchy-theme-bg", "switchBackground", "background set"]
+}

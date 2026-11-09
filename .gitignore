@@ -14,3 +14,4 @@ packaging/aur/*/*.pkg.tar.zst
 demo-out/
 result
 result-*
+bench/results/

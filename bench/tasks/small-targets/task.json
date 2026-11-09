@@ -1,0 +1,5 @@
+{
+  "summary": "Pixel precision: click small painted targets with no accessibility tree",
+  "prompt": "The \"Bench Targets\" window shows small numbered grey squares, each with its number just to its right. Click the squares numbered 4, 13 and 21, in that order. A square turns green when it is hit.",
+  "shortcuts": ["clicks\\.json", "BENCH_STATE", "targets\\.py"]
+}

@@ -1,0 +1,7 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+if [[ -d "$HOME/Documents/Quarterly Reports" ]]; then
+  verdict pass "folder exists"
+else
+  verdict fail "Documents holds: $(ls -A "$HOME/Documents" | paste -sd, -)"
+fi

@@ -1,0 +1,15 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+file=$BENCH_STATE/clicks.json
+if [[ ! -f $file ]]; then
+  verdict fail "no clicks"
+  exit
+fi
+# Hits in order, with repeated presses on the same square folded together.
+hits=$(jq -c '[.[] | .hit | select(. != null)] | reduce .[] as $h ([]; if .[-1] == $h then . else . + [$h] end)' "$file")
+misses=$(jq '[.[] | select(.hit == null)] | length' "$file")
+if [[ $hits == "[4,13,21]" ]]; then
+  verdict pass "hits $hits, $misses miss(es)"
+else
+  verdict fail "hits $hits, $misses miss(es)"
+fi
