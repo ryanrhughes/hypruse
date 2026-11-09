@@ -74,10 +74,13 @@ seed_home() {
   done
 
   # Theme and shell state, but never the clipboard history: it is the user's
-  # private data and most of the directory's size.
+  # private data and most of the directory's size. Nor the monitors'
+  # workspace blocks: with the host's monitors already holding blocks, the
+  # desk's one output got the next free one (41-50 here), so its workspace 1
+  # was 41 and a window sent to workspace 3 left the desk's block.
   for item in "$XDG_STATE_HOME"/omarchy/*; do
     case ${item##*/} in
-      clipboard-history.json | clipboard-images) ;;
+      clipboard-history.json | clipboard-images | monitors) ;;
       *) cp -a --reflink=auto "$item" "$home/.local/state/omarchy/" ;;
     esac
   done
