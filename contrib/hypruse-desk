@@ -241,6 +241,11 @@ require("default.hypr.toggles")
 
 $monitor
 
+-- A desk runs Hyprland directly, not through start-hyprland, and Hyprland
+-- says so in a banner over the top right of every frame, which is noise in
+-- every screenshot an agent reads.
+hl.config({ misc = { disable_watchdog_warning = true } })
+
 -- The desk's own bus learns the desk's display before anything is activated on
 -- it. No --systemd: that would point the user's session at this desk.
 hl.on("hyprland.start", function()
@@ -256,7 +261,7 @@ hl.config({
   general = { gaps_in = 2, gaps_out = 4, border_size = 1 },
   animations = { enabled = false },
   decoration = { blur = { enabled = false }, shadow = { enabled = false } },
-  misc = { disable_hyprland_logo = true, disable_splash_rendering = true, force_default_wallpaper = 0 },
+  misc = { disable_hyprland_logo = true, disable_splash_rendering = true, force_default_wallpaper = 0, disable_watchdog_warning = true },
 })
 hl.on("hyprland.start", function()
   hl.exec_cmd("dbus-update-activation-environment --all")
@@ -360,6 +365,23 @@ omarchy_path=$omarchy_path
 workspace=$workspace
 size=$size
 EOF
+
+  # Now and then the nested output fails to get its first buffers ("GBM:
+  # Failed to allocate a GBM buffer: bo null" in the desk's log), leaving
+  # only Hyprland's 0x0 FALLBACK monitor: no window on the host, and a
+  # shell that never starts. Seen once in a few dozen starts; the next
+  # start was fine.
+  local output=""
+  for (( attempt = 0; attempt < 40; attempt++ )); do
+    output=$(env $(cat "$run/env") hyprctl monitors -j 2>/dev/null |
+      jq -r '[.[] | select(.name != "FALLBACK")][0].name // empty')
+    [[ -n $output ]] && break
+    sleep 0.25
+  done
+  if [[ -z $output ]]; then
+    cmd_stop "$name" >/dev/null
+    die "desk '$name' got no output (the nested backend could not allocate buffers); start it again"
+  fi
 
   echo "desk '$name' ($profile) on $socket, host workspace $workspace"
   echo "drive it:  hypruse-desk run $name -- hypruse desktop"
