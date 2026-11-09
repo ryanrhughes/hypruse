@@ -33,9 +33,10 @@ No difference on these tasks; none of them exercise what the fork changed (desk 
 
 ### Leads for the fork
 
-- `use_bind` failed 4 of 4 times (both arms): every agent tried `SUPER+SPACE` first and got `hypruse has no Lua form for 'HL.Dispatcher(global)'`, because Omarchy's binds are Lua closures. Agents then fell back to `launch omarchy-menu` or Bash. Making `use_bind` work for Lua binds would save a turn or two on every Omarchy UI task.
-- The fork's `pointer` and `keyboard` averaged 941 ms and 1,038 ms per call against upstream's 261 ms and 591 ms, with several fork calls over 2 s. Two repeats under parallel load isn't proof; time it with `--jobs 1`.
-- `click_ui` averaged 430-590 ms. It's the most-used acting tool on GTK tasks, so it's worth profiling.
+- `use_bind` failed 4 of 4 times (both arms): every agent tried `SUPER+SPACE` first and got `hypruse has no Lua form for 'HL.Dispatcher(global)'`, because Hyprland 0.57 lists Omarchy's binds as `HL.Dispatcher(kind)` or a bare function. Agents then fell back to `launch omarchy-menu` or Bash. **Fixed** (b838b02): Lua binds are pressed with the layout's real keycodes; `use_bind SUPER+SPACE` opens the Omarchy menu in a desk.
+- The fork's `pointer` and `keyboard` looked slower (941 ms and 1,038 ms against 261 ms and 591 ms). **Not a regression**: split by `then`, the bare actions take 80-120 ms in both arms, and all the time is `then='screenshot'`, which waits for two identical frames (up to 2 s) so it doesn't capture mid-animation. Fork agents asked for it more often, mostly on the animated Omarchy menu.
+- `click_ui` averaged 430-590 ms. It's the most-used acting tool on GTK tasks, so it's still worth profiling.
+- Every desk stop crashed the desk's `xdg-desktop-portal-hyprland` (a crash toast on the host each time) and left 2-3 processes behind. **Fixed** (e926a9e).
 
 ### The harness itself
 
