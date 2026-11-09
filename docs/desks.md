@@ -102,6 +102,12 @@ Seeding copied the host's `~/.local/state/omarchy/monitors/`, where Omarchy reco
 
 Running `/usr/lib/at-spi2-registryd` from the desk's environment with `AT_SPI_BUS_ADDRESS` set to the desk's a11y bus (`busctl --user call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress`) fixed it: the form fixture listed its two text boxes, checkbox, radios and button, and Nautilus listed its toolbar. The desk now writes `hypruse-desk-a11y` into its guard directory and runs it at `hyprland.start`. Apps register when they start, so an app started before the registry is up has no tree until it's restarted; `bench/run.py` waits for the registry before a task's setup.
 
+### Stopping a desk crashed its portal and left processes behind (fixed)
+
+Every desk stop put a "Process crashed: xdg-desktop-portal-hyprland" toast on the host: the desk's own portal segfaulted in `wl_proxy_marshal_flags` when its compositor exited under it (about 20 core dumps during one 30-trial bench run). Stopping also left two `inotifywait` watchers per desk (the shell's plugin watcher), the desk's accessibility bus and registry, all orphaned under the user's systemd: 83 processes after one evening.
+
+`stop` now ends the desk's processes before its compositor: every one carries the desk's private bus address or, for services the bus activates, the desk's Hyprland signature, and nothing on the host has either. One `grep -lzxF` over `/proc/*/environ` finds them (a per-process loop took 55 s), TERM goes first, KILL catches stragglers after the compositor exits. A stop now takes about 2.5 s, with no core dump and nothing left.
+
 ### mise reinstalls tools inside a desk
 
 mise keeps installs under `XDG_DATA_HOME`, and the desk's points at the scratch home, so the first `claude` run in a desk downloaded Claude Code again (3 s plus the network). The bench sets `MISE_DATA_DIR` back to the user's. The desk itself doesn't yet, so any mise-managed tool an app in the desk runs is fetched again on a fresh desk.

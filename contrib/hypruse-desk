@@ -51,6 +51,19 @@ desk_alive() {
   kill -0 "$pid" 2>/dev/null
 }
 
+# Every process the desk started carries its private bus address or its
+# compositor's signature (services its bus activates get the second, not the
+# first), and nothing else on the machine does. So this finds the desk's
+# processes and only those, except this script when it runs inside the desk.
+desk_pids() {
+  local run=$1 signature
+  signature=$(sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p' "$run/env")
+  grep -lzxF -e "DBUS_SESSION_BUS_ADDRESS=unix:path=$run/bus" -e "HYPRLAND_INSTANCE_SIGNATURE=$signature" \
+    /proc/[0-9]*/environ 2>/dev/null |
+    sed -n 's|^/proc/\([0-9]*\)/environ$|\1|p' |
+    grep -vx -e "$$" -e "$BASHPID" || true
+}
+
 # The host never sends frame callbacks to a window it isn't showing, and a
 # nested Hyprland that gets none never renders, so screenshots of a hidden desk
 # hang forever. render_unfocused keeps frames coming. Named, so re-applying it
@@ -360,8 +373,27 @@ cmd_stop() {
   [[ -d $run ]] || die "no desk '$name'"
 
   if desk_alive "$name"; then
-    local pid
+    local pid others
     pid=$(<"$run/hyprland.pid")
+
+    # Its apps go first, while their compositor is still there:
+    # xdg-desktop-portal-hyprland segfaulted on every desk that exited under
+    # it (a "Process crashed" toast on the host each time), and the shell's
+    # plugin watchers (inotifywait) outlived the desk.
+    others=$(desk_pids "$run" | grep -vx "$pid" || true)
+    if [[ -n $others ]]; then
+      kill -TERM $others 2>/dev/null || true
+      local wait other alive
+      for (( wait = 0; wait < 20; wait++ )); do
+        alive=0
+        for other in $others; do
+          kill -0 "$other" 2>/dev/null && alive=1
+        done
+        (( alive )) || break
+        sleep 0.1
+      done
+    fi
+
     env $(cat "$run/env") hyprctl dispatch 'hl.dsp.exit()' >/dev/null 2>&1 || true
     local attempt
     for (( attempt = 0; attempt < 40; attempt++ )); do
@@ -371,6 +403,12 @@ cmd_stop() {
     if kill -0 "$pid" 2>/dev/null; then
       kill -TERM "$pid" 2>/dev/null || true
     fi
+  fi
+  # Anything that ignored the TERM, or started while the desk was exiting.
+  local leftover
+  leftover=$(desk_pids "$run")
+  if [[ -n $leftover ]]; then
+    kill -KILL $leftover 2>/dev/null || true
   fi
   if [[ -f $run/bus.pid ]]; then
     kill "$(<"$run/bus.pid")" 2>/dev/null || true
