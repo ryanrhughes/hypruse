@@ -102,6 +102,20 @@ Seeding copied the host's `~/.local/state/omarchy/monitors/`, where Omarchy reco
 
 Running `/usr/lib/at-spi2-registryd` from the desk's environment with `AT_SPI_BUS_ADDRESS` set to the desk's a11y bus (`busctl --user call org.a11y.Bus /org/a11y/bus org.a11y.Bus GetAddress`) fixed it: the form fixture listed its two text boxes, checkbox, radios and button, and Nautilus listed its toolbar. The desk now writes `hypruse-desk-a11y` into its guard directory and runs it at `hyprland.start`. Apps register when they start, so an app started before the registry is up has no tree until it's restarted; `bench/run.py` waits for the registry before a task's setup.
 
+### Omarchy's Qt apps have no tree until something asks for one (open)
+
+A survey of the apps Omarchy ships, each started in a fresh desk and listed with `hypruse ui` (2026-11-15):
+
+| Tree | Apps |
+|---|---|
+| Always | Nautilus, Pinta, Papers, Gliff (GTK 4); Aether (GTK 3 and WebKit, 30–47 controls); LibreOffice Calc (60, once its first-run welcome dialog is out of the way) |
+| Only with `org.a11y.Status.IsEnabled` set | omacalc (every key, named: "All clear", "Divide", "7", "Equals"), hype (16: theme and font pickers, Present, Bold), omacut, disktree, Brave (window chrome only on `about:blank`); omawrite gives just its text area |
+| Never | Obsidian (Electron; a tree with nothing actionable, even with `--force-renderer-accessibility`), LocalSend (Flutter), signed (Qt, nothing actionable), system-config-printer |
+
+Qt only turns its AT-SPI bridge on when the accessibility bus says a screen reader wants it: `org.a11y.Status.IsEnabled`, which Orca sets, or `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` in the app's environment. Omarchy's own Qt apps label their controls properly, so the names are there; nothing switches the bridge on. Setting the property on the desk's bus (`busctl --user set-property org.a11y.Bus /org/a11y/bus org.a11y.Status IsEnabled b true`) before an app starts gave omacalc, hype, omacut and disktree full trees, with no change for the GTK apps. A desk could set it at start. On the human's own session it's a global switch every app started afterwards reads, so it should stay the owner's choice.
+
+hype and signed print their CLI help and exit when started without a file; the GUI opens with `hype talk.md` or `signed doc.pdf`. Both also have agent-facing CLIs (`hype new`, `signed sign`), which a bash agent will find.
+
 ### Stopping a desk crashed its portal and left processes behind (fixed)
 
 Every desk stop put a "Process crashed: xdg-desktop-portal-hyprland" toast on the host: the desk's own portal segfaulted in `wl_proxy_marshal_flags` when its compositor exited under it (about 20 core dumps during one 30-trial bench run). Stopping also left two `inotifywait` watchers per desk (the shell's plugin watcher), the desk's accessibility bus and registry, all orphaned under the user's systemd: 83 processes after one evening.
