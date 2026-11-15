@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+mkdir -p "$HOME/Pictures"
+# a gradient background, so "crop to content" can't find the rectangle for you
+magick -size 1600x1200 gradient:'#f2d7b6'-'#7a8f6a' \
+  -fill '#1f4fd0' -draw 'rectangle 380,240 1379,989' \
+  -fill '#d04f1f' -draw 'circle 1480,120 1520,120' \
+  "$HOME/Pictures/photo.png"
+[[ -n ${BENCH_NO_LAUNCH:-} ]] && exit 0
+(cd "$HOME" && launch pinta "$HOME/Pictures/photo.png")
+wait_window --class com.github.PintaProject.Pinta

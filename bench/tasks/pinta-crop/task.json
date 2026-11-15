@@ -1,0 +1,10 @@
+{
+  "summary": "Pinta: crop to a region by eye, resize to exact pixels, save under a new name",
+  "kind": "gui",
+  "prompt": "Pinta is open on ~/Pictures/photo.png. Crop the image to just the solid blue rectangle (no background showing), resize the result to exactly 800 × 600 pixels, and save it as ~/Pictures/photo-crop.png. Do it in Pinta.",
+  "shortcuts": [
+    "^Bash .*\\b(magick|convert|mogrify|gm|vips|ffmpeg)\\b",
+    "^Bash .*\\b(PIL|Pillow|cv2|imageio|skimage)\\b"
+  ],
+  "timeout": 600
+}

@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from checklib import HOME, Checkpoints  # noqa: E402
+
+repo = HOME / "code/greeter"
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True).stdout
+
+
+c = Checkpoints()
+count = git("rev-list", "--count", "HEAD").strip()
+subject = git("log", "-1", "--format=%s").strip()
+c.add("one new commit", count == "2", f"{count} commits")
+c.add("message", subject == "Fix greeting punctuation", repr(subject))
+shown = git("show", "HEAD", "--format=", "--", "app.py")
+c.add("greet() committed", count == "2" and '"Hello, " + name + "!"' in shown)
+c.add(
+    "farewell() left out",
+    count == "2"
+    and "Goodbye" not in shown
+    and '"Goodbye, " + name + "."' in (repo / "app.py").read_text(),
+)
+c.finish()

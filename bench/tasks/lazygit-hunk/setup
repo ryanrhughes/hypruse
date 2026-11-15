@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+repo=$HOME/code/greeter
+mkdir -p "$repo"
+cd "$repo"
+git init -q -b main
+git config user.name "Jordan Lee"
+git config user.email "jordan@example.com"
+cat >app.py <<'PY'
+def greet(name):
+    return "Hello " + name
+
+
+def shout(text):
+    return text.upper()
+
+
+def whisper(text):
+    return text.lower()
+
+
+def repeat(text, times):
+    return " ".join([text] * times)
+
+
+def farewell(name):
+    return "Bye " + name
+PY
+git add app.py
+git commit -qm "Add greeter"
+sed -i 's/return "Hello " + name/return "Hello, " + name + "!"/; s/return "Bye " + name/return "Goodbye, " + name + "."/' app.py
+[[ -n ${BENCH_NO_LAUNCH:-} ]] && exit 0
+launch foot --working-directory="$repo" lazygit
+wait_window --class foot

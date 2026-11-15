@@ -1,0 +1,28 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+out=$HOME/Pictures/photo-crop.png
+if [[ ! -f $out ]]; then
+  jq -nc --arg d "no $out" '{result: "fail", detail: $d, score: 0}'
+  exit 1
+fi
+size=$(magick identify -format '%wx%h' "$out" 2>/dev/null)
+# share of pixels that are the rectangle's blue (allowing for resampling)
+blue=$(magick "$out" -alpha off -fx 'r < 0.25 && g < 0.45 && b > 0.65 ? 1 : 0' -format '%[fx:mean]' info: 2>/dev/null)
+points=1 notes=()
+if [[ $size == "800x600" ]]; then
+  points=$((points + 1))
+else
+  notes+=("size $size")
+fi
+if python3 -c "import sys; sys.exit(0 if float('${blue:-0}') >= 0.97 else 1)"; then
+  points=$((points + 1))
+else
+  notes+=("blue share ${blue:-?}")
+fi
+score=$(python3 -c "print(round($points / 3, 3))")
+if (( points == 3 )); then
+  jq -nc --arg s "$score" '{result: "pass", detail: "800x600, all blue", score: ($s | tonumber)}'
+else
+  jq -nc --arg s "$score" --arg d "saved; ${notes[*]}" '{result: "fail", detail: $d, score: ($s | tonumber)}'
+  exit 1
+fi

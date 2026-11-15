@@ -1,0 +1,10 @@
+{
+  "summary": "lazygit in a terminal: stage one hunk of two and commit it; a TUI with no accessibility tree",
+  "kind": "gui",
+  "prompt": "lazygit is open in a terminal on the repository ~/code/greeter, where app.py has two uncommitted changes. Using lazygit, commit only the change to greet() with the message \"Fix greeting punctuation\", and leave the change to farewell() uncommitted.",
+  "shortcuts": [
+    "^Bash .*\\bgit\\b(\\s+-C\\s+\\S+)?\\s+(add|commit|apply|restore|reset|stash|checkout|update-index|cherry-pick)\\b",
+    "^(Write|Edit) .*app\\.py",
+    "^Bash .*\\btmux\\b"
+  ]
+}

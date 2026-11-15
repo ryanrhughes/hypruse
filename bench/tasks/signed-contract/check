@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import datetime
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from checklib import HOME, Checkpoints  # noqa: E402
+
+c = Checkpoints()
+out = HOME / "Documents/contract-signed.pdf"
+orig = HOME / "Documents/contract.pdf"
+if not c.add("saved", out.exists(), str(out)):
+    c.add("signature on the client line", False)
+    c.add("studio line left blank", False)
+    c.add("date on the date line", False)
+    c.finish()
+
+
+def page2(pdf: Path, tmp: str, name: str) -> tuple[int, int, bytes]:
+    subprocess.run(
+        ["pdftoppm", "-r", "72", "-gray", "-f", "2", "-l", "2", str(pdf), f"{tmp}/{name}"],
+        check=True,
+        capture_output=True,
+    )
+    data = next(Path(tmp).glob(f"{name}*.pgm")).read_bytes()
+    parts = data.split(maxsplit=4)  # P5 w h max pixels
+    return int(parts[1]), int(parts[2]), parts[4]
+
+
+# Text lines: "page  x,y  w×h  text", in points from the top left
+lines = []
+for line in subprocess.run(
+    ["signed", "text", str(out), "--page", "2"], capture_output=True, text=True
+).stdout.splitlines():
+    m = re.match(r"\s*2\s+([\d.]+),([\d.]+)\s+([\d.]+)×([\d.]+)\s+(.*)", line)
+    if m:
+        lines.append((float(m[1]), float(m[2]), float(m[3]), float(m[4]), m[5]))
+
+today = datetime.date.today()
+forms = {
+    today.strftime(f)
+    for f in (
+        "%m/%d/%Y",
+        "%-m/%-d/%Y",
+        "%d/%m/%Y",
+        "%-d/%-m/%Y",
+        "%Y-%m-%d",
+        "%B %-d, %Y",
+        "%-d %B %Y",
+        "%b %-d, %Y",
+        "%-d %b %Y",
+        "%d.%m.%Y",
+    )
+}
+dated = [ln for ln in lines if any(f in ln[4] for f in forms)]
+# the Date blank's underline sits at y 428 (its box 428-444); "on the line" is a
+# box ending a little above or on it, left half of the page
+on_line = [ln for ln in dated if 400 <= ln[1] + ln[3] <= 450 and ln[0] < 330]
+c.add(
+    "date on the date line",
+    on_line,
+    f"dates at {[(round(d[0]), round(d[1])) for d in dated]}" if dated else "no date text",
+)
+
+with tempfile.TemporaryDirectory() as tmp:
+    w, h, before = page2(orig, tmp, "a")
+    w2, h2, after = page2(out, tmp, "b")
+    if (w, h) != (w2, h2):
+        c.add("signature on the client line", False, "page size changed")
+        c.add("studio line left blank", False)
+        c.finish()
+    date_boxes = [(x, y, x + bw, y + bh) for x, y, bw, bh, _ in dated]
+
+    def changed(x0: int, y0: int, x1: int, y1: int) -> int:
+        n = 0
+        for y in range(max(0, y0), min(h, y1)):
+            for x in range(max(0, x0), min(w, x1)):
+                if any(a <= x <= b and c_ <= y <= d for a, c_, b, d in date_boxes):
+                    continue
+                if abs(before[y * w + x] - after[y * w + x]) > 60:
+                    n += 1
+        return n
+
+    client = changed(40, 240, 340, 352)  # above the Client underline at y 327-343
+    studio = changed(40, 80, 340, 190)  # above the Studio underline at y 165-182
+c.add("signature on the client line", client >= 150, f"{client} px changed")
+c.add("studio line left blank", studio <= 30, f"{studio} px changed")
+c.finish()

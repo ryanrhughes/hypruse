@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+mkdir -p "$HOME/Documents"
+cp "$BENCH_FIXTURES/docs/contract.pdf" "$HOME/Documents/contract.pdf"
+signed add-signature "Jordan Lee" "$BENCH_FIXTURES/docs/signature.png" >/dev/null
+(cd "$HOME" && launch signed "$HOME/Documents/contract.pdf")
+wait_window --class signed

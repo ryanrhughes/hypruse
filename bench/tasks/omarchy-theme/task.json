@@ -1,0 +1,12 @@
+{
+  "summary": "Omarchy's own UI: switch theme through the menu's theme picker",
+  "kind": "gui",
+  "prompt": "Switch the desktop's theme to Rose Pine using the Omarchy menu (its theme picker). Use the desktop's interface, not shell commands.",
+  "shortcuts": [
+    "omarchy-theme-set",
+    "omarchy\\s+theme\\s+set",
+    "(applyTheme|setPendingTheme|applyPendingTheme)",
+    "summon\\s+omarchy\\.image-picker",
+    "theme\\.name"
+  ]
+}

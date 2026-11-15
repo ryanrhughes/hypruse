@@ -13,6 +13,8 @@ Arms:
   upstream  plus upstream hypruse as an MCP server ($HYPRUSE_UPSTREAM, a
             checkout with its own .venv; default ../hypruse-upstream)
   fork      plus this checkout's hypruse
+  fork-a11y fork, with the desk's accessibility bus marked enabled so Qt
+            apps expose their controls
 
     bench/run.py --arm bash --arm fork --task move-window --n 3
 
@@ -52,7 +54,8 @@ SERVERS = {
     / "hypruse",
 }
 SERVERS["fork-image"] = SERVERS["fork"]
-ARMS = ("bash", "upstream", "fork", "fork-image")
+SERVERS["fork-a11y"] = SERVERS["fork"]
+ARMS = ("bash", "upstream", "fork", "fork-image", "fork-a11y")
 DEFAULT_ARMS = ("bash", "upstream", "fork")
 # Variants: the same server with different settings, to test one change.
 ARM_ENV = {
@@ -61,6 +64,10 @@ ARM_ENV = {
     # to the model as base64 text.
     "fork-image": {"HYPRUSE_SCREENSHOT_MODE": "image"},
 }
+# Variants that change the desk rather than the server. "a11y" marks the
+# desk's accessibility bus enabled, as a screen reader does, which Qt waits
+# for before it exposes any app's controls (docs/desks.md).
+ARM_DESK = {"fork-a11y": {"a11y"}}
 MISE_DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "mise"
 CLAUDE = (
     subprocess.run(["mise", "which", "claude"], capture_output=True, text=True).stdout.strip()
@@ -84,6 +91,11 @@ WATCHED_FILES = [
     Path.home() / ".local/state/omarchy/current/background",
 ]
 
+# Every trial's state directory sits under bench/results/<run>/trials/, and
+# fixtures carry its path in BENCH_STATE: agents have found it through another
+# process's /proc/<pid>/environ.
+CHEATS = [r"BENCH_STATE", r"/trials/[^\s\"']*/state"]
+
 _desk_start_lock = threading.Lock()
 _results_lock = threading.Lock()
 
@@ -99,9 +111,17 @@ class Task:
         self.prompt = spec["prompt"]
         self.summary = spec.get("summary", "")
         self.shortcuts = [re.compile(p) for p in spec.get("shortcuts", [])]
+        # Reading the bench's own state (a fixture's output, the expected
+        # answer) fails a trial of either kind: it's the answer key, not a route.
+        self.cheats = [re.compile(p) for p in [*CHEATS, *spec.get("cheats", [])]]
         self.timeout = spec.get("timeout", 480)
         # Settings for the hypruse server in the MCP arms, e.g. background mode.
         self.server_env = spec.get("server_env", {})
+        # "gui": the task is about operating the interface, so a shortcut the
+        # task rules out fails the trial. "result": any route to the outcome
+        # counts, as in OSWorld; shortcuts are recorded but don't fail it.
+        self.kind = spec.get("kind", "gui")
+        self.setup_timeout = spec.get("setup_timeout", 60)
 
 
 def load_tasks(names: list[str]) -> list[Task]:
@@ -165,6 +185,7 @@ class Desk:
                 "WAYLAND_DISPLAY",
                 "DBUS_SESSION_BUS_ADDRESS",
                 "HYPRUSE_BACKGROUND",
+                "TMUX_TMPDIR",
             )
         }
         self.home = read_kv(self.run / "info")["home"]
@@ -241,6 +262,26 @@ class Desk:
             timeout=10,
         )
         return "org.a11y.atspi.Registry" in names.stdout
+
+    def enable_a11y(self) -> None:
+        subprocess.run(
+            [
+                "busctl",
+                "--user",
+                "set-property",
+                "org.a11y.Bus",
+                "/org/a11y/bus",
+                "org.a11y.Status",
+                "IsEnabled",
+                "b",
+                "true",
+            ],
+            env=self.env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
 
     def stop(self, keep_log: Path | None) -> None:
         log = self.run / "hyprland.log"
@@ -451,6 +492,7 @@ def parse_stream(path: Path, task: Task) -> dict:
             result = obj
     usage = result.get("usage", {})
     shortcuts = [call for call in calls if any(p.search(call) for p in task.shortcuts)]
+    cheats = [call for call in calls if any(p.search(call) for p in task.cheats)]
     return {
         "turns": result.get("num_turns"),
         "agent_ms": result.get("duration_ms"),
@@ -465,6 +507,7 @@ def parse_stream(path: Path, task: Task) -> dict:
         "tools": dict(tools),
         "images": images,
         "shortcuts": shortcuts,
+        "cheats": cheats,
         "agent_said": final.strip().splitlines()[0][:200] if final.strip() else "",
         "agent_error": result.get("subtype") if result.get("is_error") else None,
     }
@@ -515,10 +558,13 @@ def trial(
         "arm": arm,
         "rep": rep,
         "model": args.model,
+        "kind": task.kind,
         "started": time.time(),
     }
     try:
         desk.start()
+        if "a11y" in ARM_DESK.get(arm, ()):
+            desk.enable_a11y()
         task_env = dict(
             desk.env,
             BENCH_STATE=str(state),
@@ -529,7 +575,7 @@ def trial(
             [str(task.dir / "setup")],
             env=task_env,
             check=True,
-            timeout=60,
+            timeout=task.setup_timeout,
             capture_output=True,
             text=True,
         )
@@ -553,6 +599,8 @@ def trial(
             {
                 "passed": check.returncode == 0,
                 "detail": verdict.get("detail", ""),
+                # partial credit, for tasks with checkpoints: the share met
+                "score": verdict.get("score", 1.0 if check.returncode == 0 else 0.0),
                 "timed_out": timed_out,
                 "wall_s": round(wall, 1),
             }
@@ -588,12 +636,14 @@ def rescore(out: Path) -> None:
         stream = out / "trials" / row["trial"] / "agent.ndjson"
         if "infra_error" in row or not stream.exists() or row["task"] not in tasks:
             continue
-        shortcuts = parse_stream(stream, tasks[row["task"]])["shortcuts"]
-        if shortcuts != row.get("shortcuts"):
-            changed += 1
-            before = len(row.get("shortcuts") or [])
-            print(f"{row['trial']}: {before} -> {len(shortcuts)} shortcut(s)")
-            row["shortcuts"] = shortcuts
+        parsed = parse_stream(stream, tasks[row["task"]])
+        for key in ("shortcuts", "cheats"):
+            if parsed[key] != row.get(key, []):
+                changed += 1
+                before = len(row.get(key) or [])
+                print(f"{row['trial']}: {before} -> {len(parsed[key])} {key}")
+                row[key] = parsed[key]
+        row.setdefault("kind", tasks[row["task"]].kind)
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     print(f"{changed} trial(s) rescored in {path}")
 

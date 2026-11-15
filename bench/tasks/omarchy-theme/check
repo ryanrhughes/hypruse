@@ -1,0 +1,8 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+name=$(<"$HOME/.local/state/omarchy/current/theme.name")
+if [[ $name == "rose-pine" ]]; then
+  verdict pass "theme $name"
+else
+  verdict fail "theme is $name"
+fi

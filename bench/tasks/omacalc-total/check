@@ -1,0 +1,14 @@
+#!/bin/bash
+source "$(dirname "$0")/../../lib.sh"
+file=$BENCH_STATE/ledger.json
+want=$(<"$BENCH_STATE/expected")
+if [[ ! -f $file ]]; then
+  verdict fail "never saved (start $(<"$BENCH_STATE/start"), want $want)"
+  exit
+fi
+got=$(jq -r '.[-1]' "$file")
+if python3 -c "import sys; from decimal import Decimal as D; sys.exit(0 if D('${got//[^0-9.-]/}' or 'nan') == D('$want') else 1)" 2>/dev/null; then
+  verdict pass "saved $got"
+else
+  verdict fail "saved '$got', want $want (start $(<"$BENCH_STATE/start"))"
+fi

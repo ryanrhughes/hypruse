@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+docs=$HOME/Documents
+mkdir -p "$docs" "$HOME/Projects/alpha" "$HOME/Projects/beta" "$HOME/Projects/alpha-old"
+cp "$BENCH_FIXTURES/docs/contract.pdf" "$docs/report.pdf"
+cp "$BENCH_FIXTURES/docs/contract.pdf" "$docs/report-draft.pdf"
+printf 'Handoff notes\n- staging is green\n' >"$docs/notes.txt"
+printf 'old notes\n' >"$docs/notes-old.txt"
+cp "$BENCH_FIXTURES/docs/sales.xlsx" "$docs/budget.ods"
+cp "$BENCH_FIXTURES/docs/sales.xlsx" "$docs/budget-2025.ods"
+echo "readme" >"$HOME/Projects/alpha/README.md"
+[[ -n ${BENCH_NO_LAUNCH:-} ]] && exit 0
+launch nautilus --new-window "$docs"
+wait_window --class org.gnome.Nautilus

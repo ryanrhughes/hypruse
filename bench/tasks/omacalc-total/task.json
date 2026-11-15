@@ -1,0 +1,6 @@
+{
+  "summary": "Omarchy's calculator: read a value only the calculator shows, do arithmetic in it, carry the result to another app",
+  "kind": "result",
+  "prompt": "Omacalc (the calculator) is showing a running total. Using Omacalc, add 19.75 to it, then multiply the result by 3. Type the final result into the Amount field of the \"Bench Ledger\" window and press Save.",
+  "shortcuts": ["ledger\\.(json|py)", "\\bwl-copy\\b"]
+}

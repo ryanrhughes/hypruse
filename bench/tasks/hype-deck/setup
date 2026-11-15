@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+dir=$HOME/Talks/launch
+mkdir -p "$dir"
+hype new "$dir/presentation.md" >/dev/null
+# keep hype's front matter (theme and colours), replace its sample slide
+front=$(awk 'NR == 1 && /^---$/ { print; inside = 1; next } inside { print } inside && /^---$/ { exit }' "$dir/presentation.md")
+cat >"$dir/presentation.md" <<MD
+$front
+
+# Next steps
+
+- Ship the beta
+- Collect feedback
+
+---
+
+# Why we built it
+
+Laptops deserve better defaults.
+
+---
+
+# How it works
+
+- One script
+- Sensible configs
+MD
+cp "$dir/presentation.md" "$BENCH_STATE/presentation.before.md"
+launch hype "$dir/presentation.md"
+wait_window --class hype

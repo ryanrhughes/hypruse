@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import re
+import sys
+import zipfile
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from checklib import HOME, Checkpoints  # noqa: E402
+
+T = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ITEMS = {
+    "site design": (1, 3200),
+    "page build": (5, 420),
+    "copy editing (hours)": (12, 65.5),
+    "stock photos": (8, 29),
+    "hosting setup": (1, 180),
+}
+GRAND = 6498.0
+c = Checkpoints()
+
+
+def text_of(el) -> str:
+    return " ".join("".join(p.itertext()) for p in el.iter() if p.tag.endswith("}p")).strip()
+
+
+def rows_of(content):
+    for row in content.iter(f"{{{T}}}table-row"):
+        cells = []
+        for cell in row:
+            if not cell.tag.endswith(("}table-cell", "}covered-table-cell")):
+                continue
+            n = int(cell.get(f"{{{T}}}number-columns-repeated", "1"))
+            value = cell.get(f"{{{OFFICE}}}value")
+            entry = (text_of(cell), float(value) if value else None, cell.get(f"{{{T}}}formula"))
+            cells += [entry] * min(n, 50)
+        yield cells
+
+
+def has_chart(z: zipfile.ZipFile) -> bool:
+    return any(
+        n.endswith("content.xml") and n != "content.xml" and b"chart:chart" in z.read(n)
+        for n in z.namelist()
+    )
+
+
+ods = HOME / "Documents/invoice.ods"
+try:
+    z = zipfile.ZipFile(ods)
+    content = ET.fromstring(z.read("content.xml"))
+    c.add("invoice.ods saved", True)
+except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as exc:
+    c.add("invoice.ods saved", False, str(exc)[:60])
+    z, content = None, None
+
+found, totals_ok, grand_ok = {}, True, False
+if content is not None:
+    for cells in rows_of(content):
+        for i, (txt, _, _) in enumerate(cells):
+            key = txt.strip().lower()
+            if key in ITEMS and i + 3 < len(cells):
+                found[key] = cells[i + 1 : i + 4]
+        for _txt, value, formula in cells:
+            if formula and value is not None and abs(value - GRAND) < 0.01:
+                grand_ok = True
+items_ok = len(found) == len(ITEMS) and all(
+    q[1] == ITEMS[k][0] and p[1] is not None and abs(p[1] - ITEMS[k][1]) < 0.001
+    for k, (q, p, _) in found.items()
+)
+for k, (_q, _p, t) in found.items():
+    if not (t[2] and t[1] is not None and abs(t[1] - ITEMS[k][0] * ITEMS[k][1]) < 0.01):
+        totals_ok = False
+c.add("line items", items_ok, f"found {len(found)}/5")
+c.add("total formulas", items_ok and totals_ok)
+c.add("grand total formula", grand_ok)
+c.add("chart in the sheet", z is not None and has_chart(z))
+
+odt = HOME / "Documents/summary.odt"
+try:
+    w = zipfile.ZipFile(odt)
+    body = w.read("content.xml").decode()
+    words = re.sub(r"<[^>]+>", " ", body)
+    c.add("summary.odt saved", True)
+    c.add("states the grand total", re.search(r"6[,\s ]?498(\.00?)?\b", words) is not None)
+    c.add("chart in the summary", has_chart(w) or "<draw:image" in body or "<draw:object" in body)
+except (OSError, KeyError, zipfile.BadZipFile) as exc:
+    c.add("summary.odt saved", False, str(exc)[:60])
+    c.add("states the grand total", False)
+    c.add("chart in the summary", False)
+c.finish()

@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from checklib import HOME, Checkpoints  # noqa: E402
+
+c = Checkpoints()
+text = (HOME / "Talks/launch/presentation.md").read_text()
+m = re.match(r"---\n(.*?)\n---\n(.*)", text, re.S)
+front, body = (m.group(1), m.group(2)) if m else ("", text)
+theme = re.search(r'^theme:\s*"?([\w-]+)"?', front, re.M)
+slides = [s.strip() for s in re.split(r"\n---\n", body) if s.strip()]
+heads = []
+for s in slides:
+    h = re.search(r"^#{1,3}\s+(.+?)\s*$", s, re.M)
+    heads.append(h.group(1) if h else s.splitlines()[0][:30])
+c.add(
+    "theme rose-pine", theme and theme.group(1) == "rose-pine", theme.group(1) if theme else "none"
+)
+c.add("order", heads[:3] == ["Why we built it", "How it works", "Next steps"], " / ".join(heads))
+c.add(
+    "questions slide last",
+    len(heads) == 4 and heads[-1].rstrip("?") == "Questions",
+    " / ".join(heads),
+)
+nxt = next((s for s in slides if "Next steps" in s), "")
+c.guard(
+    "content kept", "Ship the beta" in nxt and "Collect feedback" in nxt and "One script" in body
+)
+c.finish()

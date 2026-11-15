@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+name=$(<"$HOME/.local/state/omarchy/current/theme.name")
+echo "$name" >"$BENCH_STATE/theme-before"
+# the task needs a switch to happen; start from anything but the target
+if [[ $name == "rose-pine" ]]; then
+  omarchy-theme-set tokyo-night >/dev/null 2>&1
+fi

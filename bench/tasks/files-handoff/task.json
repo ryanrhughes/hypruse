@@ -1,0 +1,11 @@
+{
+  "summary": "Nautilus: bookmark a folder in the sidebar, then compress a chosen set of files into a named zip",
+  "kind": "gui",
+  "prompt": "Using the Files app (Nautilus, already open on ~/Documents): add ~/Projects/alpha to the sidebar's bookmarks, then compress report.pdf, notes.txt and budget.ods from ~/Documents into a single zip archive named handoff.zip in ~/Documents. Leave the original files where they are. Do it in Files.",
+  "shortcuts": [
+    "^Bash .*\\b(zip|7z|7za|bsdtar|tar|gzip)\\b",
+    "^Bash .*\\bzipfile\\b",
+    "bookmarks",
+    "^Bash .*\\b(gio|nautilus)\\s"
+  ]
+}

@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+source "$(dirname "$0")/../../lib.sh"
+# A different starting total every trial, so nothing can be remembered.
+start=$(python3 -c 'import random; print(f"{random.randint(1000, 9999)}.{random.choice([25, 5, 75, 4])}")')
+python3 -c "from decimal import Decimal as D; print((D('$start') + D('19.75')) * 3)" >"$BENCH_STATE/expected"
+launch python3 "$BENCH_FIXTURES/ledger.py"
+wait_window "Bench Ledger"
+launch omacalc
+wait_window --class omacalc
+sleep 1
+"$BENCH_HYPRUSE" keyboard type "$start" --window "$(hyprctl clients -j | jq -r '.[] | select(.class == "omacalc") | .address')" >/dev/null
+echo "$start" >"$BENCH_STATE/start"

@@ -1,0 +1,11 @@
+{
+  "summary": "Long, across apps: read a PDF in Papers, build a sheet with formulas and a chart in Calc, write it up in Writer; any route counts",
+  "kind": "result",
+  "prompt": "~/Documents/invoice.pdf (open in Papers) lists an invoice's line items without totals. Build ~/Documents/invoice.ods in LibreOffice Calc with the columns Item, Qty, Price and Total, one row per line item, where Total is a formula (Qty × Price); add a grand total computed with a formula; and add a bar chart of each item's Total. Then write ~/Documents/summary.odt in LibreOffice Writer: one sentence stating the invoice's grand total, followed by the chart.",
+  "shortcuts": [
+    "^Bash .*\\b(odfpy|ezodf|openpyxl|pandas|python-docx)\\b",
+    "^Bash .*\\bsoffice\\b.*--(headless|convert-to)",
+    "^Bash .*\\b(pdftotext|pdftoppm|mutool|tesseract)\\b"
+  ],
+  "timeout": 900
+}

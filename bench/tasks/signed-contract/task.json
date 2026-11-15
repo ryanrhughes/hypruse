@@ -1,0 +1,11 @@
+{
+  "summary": "Omarchy's Signed: place a saved signature and a date on the right lines of a PDF; the app has no accessibility tree",
+  "kind": "gui",
+  "prompt": "Signed is open on ~/Documents/contract.pdf. Sign it for the Client (not the Studio): put the saved signature \"Jordan Lee\" on the Client signature line on page 2, put today's date on the Date line below it, and save the signed copy as ~/Documents/contract-signed.pdf. Do it in Signed.",
+  "shortcuts": [
+    "^Bash .*\\bsigned\\s+sign\\b",
+    "^Bash .*\\b(pypdf|PyPDF2|fitz|pikepdf|reportlab|qpdf|pdftk|gs)\\b",
+    "^(Write|Edit) .*contract-signed"
+  ],
+  "timeout": 600
+}

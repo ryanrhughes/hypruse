@@ -1,0 +1,10 @@
+{
+  "summary": "Omarchy's Hype: reorder slides, change theme, add a slide, save, all in the editor",
+  "kind": "gui",
+  "prompt": "Hype is open on the presentation ~/Talks/launch/presentation.md. In Hype, put the slides in the order \"Why we built it\", \"How it works\", \"Next steps\"; switch the presentation's theme to rose-pine; add a new last slide whose headline is \"Questions?\"; then save. Make the changes in the Hype editor, not by editing the file another way.",
+  "shortcuts": [
+    "^(Write|Edit|MultiEdit|NotebookEdit) .*presentation\\.md",
+    "^Bash .*(>|\\btee\\b|\\bsed\\s+-i|\\bperl\\b|\\bpython3?\\b|\\bawk\\b|\\bcp\\b|\\bmv\\b|\\bed\\b)[^|;&]*presentation\\.md",
+    "^Bash .*\\bhype\\s+(new|render|export)\\b"
+  ]
+}

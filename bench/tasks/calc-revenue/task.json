@@ -1,0 +1,12 @@
+{
+  "summary": "LibreOffice Calc: add a formula column, sort by it, freeze the header row, save as xlsx",
+  "kind": "gui",
+  "prompt": "~/Documents/sales.xlsx is open in LibreOffice Calc. Add a column E headed \"Revenue\" that holds Units × Unit Price as a formula on every data row. Sort the data rows by Revenue from highest to lowest, freeze the header row so it stays visible when scrolling, and save the file, keeping the xlsx format. Do it in Calc.",
+  "shortcuts": [
+    "^Bash .*\\b(openpyxl|pandas|xlsxwriter|ezodf|pyexcel)\\b",
+    "^Bash .*\\bsoffice\\b.*--(headless|convert-to)",
+    "^Bash .*\\b(zip|unzip|bsdtar)\\b[^|;&]*sales\\.xlsx",
+    "^(Write|Edit) .*sales\\.(xlsx|csv)"
+  ],
+  "timeout": 600
+}
