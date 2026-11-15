@@ -236,6 +236,35 @@ EOF
   for cmd in shutdown reboot poweroff halt; do
     printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nrefuse %s "$@"\n' "$cmd" >"$dir/$cmd"
   done
+
+  # A desk shares the machine's process table, so a process found by name may
+  # be the user's. A theme switch retints running apps that way: it found the
+  # user's foot terminals with `pgrep -x foot` and wrote the desk's colours to
+  # their ttys, and signalled their btop and kitty to reload. Every process a
+  # desk starts carries its private bus address, so these only see the desk's.
+  local desk_env="DBUS_SESSION_BUS_ADDRESS=unix:path=$(dirname "$dir")/bus"
+  for cmd in pgrep pkill; do
+    printf '#!/bin/bash\n. "$(dirname "$0")/_guard"\nexec "$(real %s)" --env %q "$@"\n' "$cmd" "$desk_env" >"$dir/$cmd"
+  done
+  # killall has no such filter; its common forms map onto pkill's exact match.
+  cat >"$dir/killall" <<EOF
+#!/bin/bash
+. "\$(dirname "\$0")/_guard"
+signal=() names=()
+while (( \$# )); do
+  case \$1 in
+    -s | --signal) signal=(--signal "\$2"); shift 2 ;;
+    -[A-Z]* | -[0-9]*) signal=(--signal "\${1#-}"); shift ;;
+    -*) shift ;;
+    *) names+=("\$1"); shift ;;
+  esac
+done
+status=1
+for name in "\${names[@]}"; do
+  "\$(real pkill)" "\${signal[@]}" --env $(printf %q "$desk_env") -x "\$name" && status=0
+done
+exit \$status
+EOF
   # The desk's accessibility bus is a dbus-broker, and dbus-broker starts the
   # services it activates through the user's systemd manager, in the host
   # session's environment. Activating the AT-SPI registry that way failed
@@ -357,6 +386,9 @@ cmd_start() {
     export XDG_DATA_HOME="$home/.local/share" XDG_CACHE_HOME="$home/.cache"
     export OMARCHY_PATH="$omarchy_path"
     export PATH="$run/bin:$PATH"
+    # tmux's server socket lives in /tmp by default, shared with the user's
+    # own tmux: a desk's theme switch restyled every session they had open.
+    export TMUX_TMPDIR="$run"
 
     # The bus starts without the host's display or compositor in its
     # environment, so nothing it activates can reach the host session. The
@@ -393,6 +425,7 @@ WAYLAND_DISPLAY=$socket
 DBUS_SESSION_BUS_ADDRESS=unix:path=$run/bus
 HYPRUSE_BACKGROUND=0
 HYPRUSE_DESK=$name
+TMUX_TMPDIR=$run
 EOF
   cat >"$run/info" <<EOF
 profile=$profile
