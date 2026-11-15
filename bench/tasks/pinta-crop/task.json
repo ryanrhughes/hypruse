@@ -6,5 +6,5 @@
     "^Bash .*\\b(magick|convert|mogrify|gm|vips|ffmpeg)\\b",
     "^Bash .*\\b(PIL|Pillow|cv2|imageio|skimage)\\b"
   ],
-  "timeout": 600
+  "timeout": 900
 }

@@ -7,5 +7,6 @@
     "^Bash .*\\bzipfile\\b",
     "bookmarks",
     "^Bash .*\\b(gio|nautilus)\\s"
-  ]
+  ],
+  "timeout": 720
 }

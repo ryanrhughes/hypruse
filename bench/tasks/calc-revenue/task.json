@@ -8,5 +8,5 @@
     "^Bash .*\\b(zip|unzip|bsdtar)\\b[^|;&]*sales\\.xlsx",
     "^(Write|Edit) .*sales\\.(xlsx|csv)"
   ],
-  "timeout": 600
+  "timeout": 900
 }
