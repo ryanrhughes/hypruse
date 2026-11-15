@@ -52,8 +52,13 @@ def state_path() -> Path:
 def _write(payload: dict) -> None:
     if _state_path is None:
         return
-    with _write_lock:
-        tmp = _state_path.with_suffix(".tmp")
+    # The beacon is shared by every hypruse process on the machine (two
+    # clients, or one server per desk), and the lock only orders this
+    # process's threads: with one shared tmp name, another server renamed
+    # ours away mid-write and a zoom failed with ENOENT. Each process writes
+    # its own tmp file, and the beacon never fails the action it reports.
+    with _write_lock, contextlib.suppress(OSError):
+        tmp = _state_path.with_name(f"{_state_path.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(payload))
         tmp.replace(_state_path)
 

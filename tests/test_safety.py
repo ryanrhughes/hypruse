@@ -21,6 +21,26 @@ def test_beacon_lifecycle(tmp_path, monkeypatch):
     assert not path.exists()
 
 
+def test_another_servers_beacon_write_cannot_fail_an_action(tmp_path, monkeypatch):
+    # every hypruse process shares state.json; a second server (another
+    # desk, another client) writing it at the same moment once took this
+    # server's tmp file and made a zoom fail with ENOENT
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    safety.init()
+    other = tmp_path / "hypruse" / "state.tmp"  # the name every process used to share
+    other.write_text("{}")  # a tmp file in flight from another process
+    safety.touch("zoom")
+    assert other.exists()
+    assert json.loads((tmp_path / "hypruse" / "state.json").read_text())["last_action"] == "zoom"
+
+    def vanished(self, target):
+        raise FileNotFoundError(self)
+
+    monkeypatch.setattr(type(other), "replace", vanished)
+    safety.touch("pointer:click")  # must not raise
+    safety.shutdown()
+
+
 def test_touch_without_init_is_noop(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     safety.shutdown()  # ensure clean module state
