@@ -662,6 +662,11 @@ def main() -> None:
     parser.add_argument("--out", help="results directory (default bench/results/<timestamp>)")
     parser.add_argument("--keep-logs", action="store_true", help="keep each desk's Hyprland log")
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="skip trials --out already has a result for (same task, arm and repeat)",
+    )
+    parser.add_argument(
         "--rescore",
         metavar="DIR",
         help="re-read each trial in DIR against the tasks' current shortcut patterns, then exit",
@@ -702,6 +707,13 @@ def main() -> None:
     # Interleave arms within each repeat so drift (load, the gateway) hits
     # every arm alike rather than whichever ran last.
     plan = [(task, arm, rep) for rep in range(1, args.n + 1) for task in tasks for arm in arms]
+    if args.resume and (out / "results.ndjson").exists():
+        done = {
+            (r["task"], r["arm"], r["rep"])
+            for r in map(json.loads, (out / "results.ndjson").read_text().splitlines())
+            if "infra_error" not in r
+        }
+        plan = [p for p in plan if (p[0].name, p[1], p[2]) not in done]
     print(f"{len(plan)} trial(s) -> {out}", flush=True)
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         list(pool.map(lambda p: trial(*p, args, out, creds, host), plan))
