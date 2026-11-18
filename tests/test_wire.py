@@ -120,6 +120,46 @@ def test_scroll_uses_bound_version(monkeypatch):
     assert wire.PTR_AXIS in sent
 
 
+def test_combo_tells_the_app_which_modifiers_are_held():
+    """Hyprland only passes a virtual keyboard's modifiers to the focused app
+    through the modifiers event; pressing Control_L alone made ctrl+l a bare l."""
+    sent = []
+
+    class FakeKeyboard(wire.VirtualKeyboard):
+        def __init__(self):
+            pass
+
+        def _new_keyboard(self):
+            return 7
+
+        def _upload_keymap(self, kb, keymap):
+            pass
+
+        def _send(self, obj, opcode, body=b""):
+            if opcode == wire.VK_KEY:
+                _, code, state = struct.unpack("<III", body)
+                sent.append(("key", code, state))
+            elif opcode == wire.VK_MODIFIERS:
+                sent.append(("mods", struct.unpack("<IIII", body)[0]))
+
+        def _roundtrip(self, collect_globals=False):
+            return []
+
+    ctrl, l_key = 29, 38
+    FakeKeyboard().press_codes(b"", [ctrl, l_key], [wire.COMBO_MOD_MASK["ctrl"], 0])
+    assert sent == [
+        ("key", ctrl, wire.PRESSED),
+        ("mods", 4),
+        ("key", l_key, wire.PRESSED),
+        ("key", l_key, wire.RELEASED),
+        ("key", ctrl, wire.RELEASED),
+        ("mods", 0),
+    ]
+    sent.clear()
+    FakeKeyboard().key_combo(["ctrl", "shift"], "t")
+    assert [m[1] for m in sent if m[0] == "mods"] == [4, 5, 4, 0]
+
+
 def test_scroll_messages_both_axes_one_frame():
     msgs = wire.scroll_messages(dy=1, dx=-2)
     opcodes = [op for op, _ in msgs]

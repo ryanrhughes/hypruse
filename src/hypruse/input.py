@@ -25,6 +25,7 @@ from hypruse import hyprctl, journal, keymap
 from hypruse.wire import (
     BUTTONS,
     COMBO_MOD_KEYSYM,
+    COMBO_MOD_MASK,
     PRESSED,
     RELEASED,
     VirtualKeyboard,
@@ -152,25 +153,28 @@ def type_text(text: str) -> None:
         _wtype(["-"], stdin=text)  # '-' reads stdin: safe for any content
 
 
-def _real_combo(mods: list[str], key: str | None) -> tuple[bytes, list[int]] | None:
-    """(keymap, evdev codes) for a combo on the active layout's real keymap,
+def _real_combo(mods: list[str], key: str | None) -> tuple[bytes, list[int], list[int]] | None:
+    """(keymap, evdev codes, modifier masks) for a combo on the active layout's real keymap,
     or None when the layout can't be built or lacks one of the keys (the
     caller falls back to a generated keymap). See keymap.RealKeys for why."""
     with contextlib.suppress(Exception):
         real = keymap.real_keys(*hyprctl.active_layout())
         codes: list[int] = []
+        masks: list[int] = []
         for m in mods:
             sym = COMBO_MOD_KEYSYM.get(m)
             code = real.code(sym) if sym else None
             if code is None:
                 return None
             codes.append(code)
+            masks.append(COMBO_MOD_MASK[m])
         if key:
             code = _key_code(real, key)
             if code is None:
                 return None
             codes.append(code)
-        return (real.text, codes) if codes else None
+            masks.append(0)
+        return (real.text, codes, masks) if codes else None
     return None
 
 

@@ -120,7 +120,7 @@ def test_key_combo_presses_real_keycodes_on_the_real_layout(monkeypatch):
     pressed = []
 
     class Keyboard:
-        def press_codes(self, keymap, codes):
+        def press_codes(self, keymap, codes, masks):
             pressed.append(codes)
 
     monkeypatch.setattr(hinput, "_with_keyboard", lambda fn: fn(Keyboard()))
@@ -144,7 +144,7 @@ def test_press_bind_reads_combos_the_way_hyprland_writes_them(monkeypatch):
     pressed = []
 
     class Keyboard:
-        def press_codes(self, keymap, codes):
+        def press_codes(self, keymap, codes, masks):
             pressed.append(codes)
 
     monkeypatch.setattr(hinput, "_with_keyboard", lambda fn: fn(Keyboard()))

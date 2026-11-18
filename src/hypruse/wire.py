@@ -406,14 +406,17 @@ COMBO_MOD_XKB = {
     "logo": "Mod4",
     "altgr": "Mod5",
 }
+# The same modifiers as bits of a modifiers event. xkbcommon numbers the eight
+# real modifiers alike in every keymap (Shift 0, Lock 1, Control 2, Mod1 3 ...
+# Mod5 7), so these hold for a real layout and a generated one.
+COMBO_MOD_MASK = {"shift": 1 << 0, "ctrl": 1 << 2, "alt": 1 << 3, "logo": 1 << 6, "altgr": 1 << 7}
 
 
 def _keymap_for_combo(key: str | None, mods: list[str]) -> tuple[bytes, dict[str, int]]:
     """A keymap holding one key plus the modifier keys a combo needs.
 
     Returns the keymap and a name -> evdev code map. Modifiers are pressed as real
-    keys rather than announced through the modifiers event, because that is what a
-    physical keyboard does and it needs no agreement about mask numbering.
+    keys, and VirtualKeyboard announces them with the modifiers event as well.
     """
     entries: list[tuple[str, str]] = []  # (label, keysym)
     for m in mods:
@@ -532,35 +535,46 @@ class VirtualKeyboard(VirtualPointer):
             )
             self._roundtrip()
 
-    def press_codes(self, keymap: bytes, codes: list[int]) -> None:
-        """Press `codes` (evdev) in order and release them in reverse, on a
-        keyboard carrying `keymap`, a real layout's full keymap (see
-        keymap.RealKeys): every key goes out at the code a physical
-        keyboard would send."""
+    def _press_release(self, kb: int, codes: list[int], masks: list[int]) -> None:
+        """Press `codes` in order and release them in reverse. A modifier key
+        (a nonzero mask) is followed by a modifiers event: Hyprland matches
+        binds against the keys it saw go down, but the app with focus only
+        learns that Control is held from that event, so without it ctrl+l
+        reached apps as a bare l."""
+        held = 0
+        for code, mask in zip(codes, masks, strict=True):
+            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, PRESSED))
+            if mask:
+                held |= mask
+                self._send(kb, VK_MODIFIERS, struct.pack("<IIII", held, 0, 0, 0))
+        for code, mask in zip(reversed(codes), reversed(masks), strict=True):
+            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, RELEASED))
+            if mask:
+                held &= ~mask
+                self._send(kb, VK_MODIFIERS, struct.pack("<IIII", held, 0, 0, 0))
+        self._roundtrip()
+
+    def press_codes(self, keymap: bytes, codes: list[int], masks: list[int]) -> None:
+        """Press `codes` (evdev) on a keyboard carrying `keymap`, a real
+        layout's full keymap (see keymap.RealKeys): every key goes out at the
+        code a physical keyboard would send. `masks` holds each code's
+        modifier bit (COMBO_MOD_MASK), 0 for an ordinary key."""
         if not codes:
             raise WireError("combo resolved to nothing")
         kb = self._new_keyboard()
         self._upload_keymap(kb, keymap)
-        for code in codes:
-            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, PRESSED))
-        for code in reversed(codes):
-            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), code, RELEASED))
-        self._roundtrip()
+        self._press_release(kb, codes, masks)
 
     def key_combo(self, mods: list[str], key: str | None) -> None:
         """Press a combo on this seat.
 
-        Modifiers are pressed as real keys, in order, then released in reverse.
-        That mirrors a physical keyboard and avoids depending on any agreement
-        about modifier mask numbering.
+        Modifiers are pressed as real keys, in order, then released in reverse,
+        each announced with a modifiers event as a physical keyboard's would be.
         """
         keymap, codes = _keymap_for_combo(key, mods)
         kb = self._new_keyboard()
         self._upload_keymap(kb, keymap)
 
         order = [f"M_{m}" for m in mods] + (["KEY"] if key else [])
-        for label in order:
-            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), codes[label], PRESSED))
-        for label in reversed(order):
-            self._send(kb, VK_KEY, struct.pack("<III", _now_ms(), codes[label], RELEASED))
-        self._roundtrip()
+        masks = [COMBO_MOD_MASK[m] for m in mods] + ([0] if key else [])
+        self._press_release(kb, [codes[label] for label in order], masks)
