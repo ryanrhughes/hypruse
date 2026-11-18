@@ -3,9 +3,10 @@
   "kind": "gui",
   "prompt": "Using the Files app (Nautilus, already open on ~/Documents): add ~/Projects/alpha to the sidebar's bookmarks, then compress report.pdf, notes.txt and budget.ods from ~/Documents into a single zip archive named handoff.zip in ~/Documents. Leave the original files where they are. Do it in Files.",
   "shortcuts": [
-    "^Bash .*\\b(zip|7z|7za|bsdtar|tar|gzip)\\b",
-    "^Bash .*\\bzipfile\\b",
-    "bookmarks",
+    "^Bash .*(?:^|[\\s;&|(\"']|\\\\n)(zip|7z|7za|bsdtar|tar|gzip)\\s",
+    "^Bash .*\\bzipfile\\b.*['\"][wax]['\"]",
+    "^Bash .*(?:>>?|\\btee\\b|\\bcp\\b|\\bmv\\b|\\bln\\b|\\bsed\\s+-i)[^|;&]*bookmarks",
+    "^(Write|Edit) .*bookmarks",
     "^Bash .*\\b(gio|nautilus)\\s"
   ],
   "timeout": 720

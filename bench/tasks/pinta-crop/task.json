@@ -3,8 +3,9 @@
   "kind": "gui",
   "prompt": "Pinta is open on ~/Pictures/photo.png. Crop the image to just the solid blue rectangle (no background showing), resize the result to exactly 800 × 600 pixels, and save it as ~/Pictures/photo-crop.png. Do it in Pinta.",
   "shortcuts": [
-    "^Bash .*\\b(magick|convert|mogrify|gm|vips|ffmpeg)\\b",
-    "^Bash .*\\b(PIL|Pillow|cv2|imageio|skimage)\\b"
+    "^Bash .*\\b(magick|convert|mogrify|gm|vips|ffmpeg)\\b(?![^|;&]*\\binfo:)(?![^|;&]*\\bidentify\\b)[^|;&]*photo-crop\\.png",
+    "^Bash .*\\bmogrify\\b[^|;&]*photo\\.png",
+    "^Bash .*\\b(PIL|Pillow|cv2|imageio|skimage)\\b.*\\.(save|imwrite|imsave)\\("
   ],
   "timeout": 900
 }

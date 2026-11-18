@@ -7,6 +7,7 @@
     "omarchy\\s+theme\\s+set",
     "(applyTheme|setPendingTheme|applyPendingTheme)",
     "summon\\s+omarchy\\.image-picker",
-    "theme\\.name"
+    "^Bash .*(?:>>?|\\btee\\b|\\bcp\\b|\\bmv\\b|\\bln\\b|\\bsed\\s+-i)[^|;&]*theme\\.name",
+    "^(Write|Edit) .*theme\\.name"
   ]
 }
