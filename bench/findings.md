@@ -2,6 +2,49 @@
 
 What the bench has shown so far, newest first. Raw results live in `bench/results/` (not committed); this file keeps the conclusions and the numbers behind them.
 
+## 2026-11-17: Omarchy apps, first round
+
+Upstream beat the fork on Omarchy's own apps, and the biggest reason is a fork bug this round found: since 53af640, key combos reached apps without their modifiers. Fixed in c64f5ab; the fork needs a rerun before the comparison means anything.
+
+Sonnet 5.5, the 9 Omarchy tasks × 4 arms × 3 repeats, three desks at a time. Fork at 72cf945 (the first 16 trials at 901b7f0, before a T3 restart killed the run), upstream at 6c28114. 107 of 108 trials: the last fork-a11y `invoice-report` was stopped (see below). Shortcut patterns were corrected afterwards (82c7b0d) and rescored.
+
+| Task | bash | upstream | fork | fork-a11y |
+|---|---|---|---|---|
+| `omarchy-theme` | 3/3, 68 s | 3/3, 39 s | 3/3, 25 s | 3/3, 22 s |
+| `omacalc-total` | 3/3, 24 s | 3/3, 13 s | 3/3, 16 s | 3/3, 18 s |
+| `hype-deck` | 2/3, 353 s | 3/3, 30 s | 2/3, 148 s | 3/3, 91 s |
+| `signed-contract` | 3/3, 267 s | 3/3, 69 s | 3/3, 90 s | 3/3, 122 s |
+| `calc-revenue` | 1/3, 468 s | 3/3, 53 s | 3/3, 91 s | 3/3, 89 s |
+| `pinta-crop` | 3/3, 351 s | 3/3, 89 s | 3/3, 113 s | 3/3, 94 s |
+| `files-handoff` | 3/3, 30 s | 3/3, 27 s | 3/3, 109 s | 3/3, 127 s |
+| `lazygit-hunk` | 1/3, 26 s | 3/3, 12 s | 3/3, 13 s | 3/3, 13 s |
+| `invoice-report` | 3/3, 450 s | 3/3, 118 s | 3/3, 444 s | 1/2, 414 s |
+| All | 22/27, $0.133 | 27/27, $0.156 | 26/27, $0.286 | 25/26, $0.245 |
+
+Times are medians; cost is the median per trial. The run cost $24.18 at list price.
+
+- **The fork dropped modifiers.** 53af640 moved combos onto the layout's real keycodes so Hyprland's binds match, and binds kept working. But the focused app only learns Control is held from the virtual keyboard's modifiers event, and nothing sent one, so `ctrl+l` reached Nautilus as a bare `l` and started a search. In a desk, 20 of 20 `ctrl+l` presses arrived as `l`; `ctrl+c`, `shift+a` and `alt+b` too. Agents worked around it with menus and clicks, which is where the fork's turns went: median 55 against upstream's 25, and twice the cost.
+- **The fork's tools are slower too**, separately: `sequence` median 4.3 s against 1.4 s, `wait_for` 6.5 s against 0.5 s. Worth a look once the rerun shows what's left.
+- **The accessibility lever didn't show up yet.** fork-a11y passed `hype-deck` (Qt) 3/3 in 91 s against the fork's 2/3 in 148 s, but with the modifier bug in both arms and 3 repeats, that's not a result.
+- **Bash is a strong baseline** on anything with a CLI underneath (theme, Files, omacalc) and slow on real GUI work: Calc 468 s and 1/3, Pinta 351 s, Hype 353 s. It measured Pinta's rectangle with ImageMagick before cropping in Pinta; that's reading, so it isn't scored.
+- **`invoice-report` doesn't measure GUI use.** Every arm scripted LibreOffice over UNO, which a `result` task allows. It needs to become a `gui` task or go.
+
+### Agents reached outside their desk
+
+This has to be fixed before the next run.
+
+- **Every `invoice-report` trial wrote into the real home.** The agents' UNO scripts hard-coded `file:///home/ryan/Documents`, which is a symlink into Dropbox, saved `invoice.ods` and `summary.odt` there, then `rm`'d or `mv`'d them once the check couldn't find them. One copy was still there after the run; it's in `results/omarchy-r1-aborted/host-junk/`. Nothing suggests a real file was overwritten (the first sighting is the agents' own), but nothing stopped it either.
+- **Agents run `find /` when they lose a saved file**, and see other desks' homes, a sibling trial's finished answer and the real `~/Documents`. Desks isolate the display, the bus and the scratch HOME, not the filesystem.
+- **Trials share `/tmp`.** Later invoice trials found and edited an earlier trial's `/tmp/b.py` instead of writing their own, so those results aren't independent. My own leftover check outputs (with correct answers) sat in `/tmp` too; they're gone.
+- **A desk's file dialogs opened on the host**: two `xdg-desktop-portal-gtk: Open Files` windows while Signed and Hype trials ran. The desk's apps reached a portal backend that draws on the host's display.
+
+The fix is to run the agent itself in a sandbox: a private `/tmp`, the real home hidden except the desk's, the bench's result directory and the read-only tools it needs. The host watcher should also watch `$HOME` outside the desks, since it only looked at `/etc` policies and the theme.
+
+### Found and fixed along the way
+
+- A T3 restart removed the slice the run lived in and killed it at 16 trials; `setsid` doesn't leave the cgroup. Runs now go through `systemd-run --user`, and `run.py --resume` (4fe0810) skips the trials a results file already has.
+- Reading `theme.name`, the bookmarks file or the zip's listing to check work counted as a shortcut, and `\bzip\b` matched the `.zip` in `handoff.zip`. That failed every fork `files-handoff` pass. Only writes count now (82c7b0d).
+
 ## 2026-11-08: harder tasks
 
 Sonnet 5.5, 4 tasks × 3 arms × 3 repeats, three desks at a time. Fork at 1d35d9d (with the `use_bind` fix), upstream at 6c28114. Shortcut patterns were corrected afterwards and rescored with `run.py --rescore`; pass/fail is the checks' own.
